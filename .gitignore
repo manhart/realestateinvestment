@@ -1,0 +1,5 @@
+.agents/
+.phpunit.cache/
+vendor/
+*.log
+*.tmp

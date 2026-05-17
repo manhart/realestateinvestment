@@ -1,0 +1,311 @@
+<div id="{MODULE_ID}" class="rei-module">
+    <section class="rei-toolbar">
+        <div>
+            <h1>Immobilien-Kapitalanlage</h1>
+            <input class="form-control form-control-sm" data-path="scenarioName" value="Basisszenario" aria-label="Szenarioname" autocomplete="off">
+            <input class="form-control form-control-sm mt-1" data-path="scenarioGroup" value="" aria-label="Objekt oder Gruppe" placeholder="Objekt / Gruppe" autocomplete="off">
+        </div>
+        <div class="rei-actions">
+            <button class="btn btn-outline-secondary" type="button" data-role="new-scenario">Neu</button>
+            <button class="btn btn-primary" type="button" data-role="calculate">Berechnen</button>
+            <button class="btn btn-outline-secondary" type="button" data-role="save">Speichern</button>
+            <button class="btn btn-outline-secondary" type="button" data-role="rename-scenario">Umbenennen</button>
+            <button class="btn btn-outline-danger" type="button" data-role="delete-scenario">Löschen</button>
+            <select class="form-select form-select-sm rei-scenario-select" data-role="scenario-group-list" aria-label="Szenario-Gruppe filtern">
+                <option value="">Alle Gruppen</option>
+            </select>
+            <select class="form-select form-select-sm rei-scenario-select" data-role="scenario-list" aria-label="Gespeichertes Szenario laden">
+                <option value="">Gespeichertes Szenario</option>
+            </select>
+            <button class="btn btn-outline-secondary" type="button" data-role="load">Laden</button>
+            <button class="btn btn-outline-secondary" type="button" data-role="copy-workspace-link">Workspace-Link</button>
+            <button class="btn btn-outline-secondary" type="button" data-role="share-scenario">Szenario teilen</button>
+            <button class="btn btn-outline-secondary" type="button" data-role="compare">Szenarien vergleichen</button>
+        </div>
+    </section>
+
+    <section class="rei-section rei-reference-panel">
+        <div class="rei-reference-grid">
+        <details class="rei-details">
+            <summary>Hilfe</summary>
+            <div class="rei-scenario-help">
+                <article>
+                    <h3>Szenario</h3>
+                    <p>Der Szenarioname ist der gespeicherte Variantenname, z. B. Basis, konservativ oder 1 % Tilgung.</p>
+                </article>
+                <article>
+                    <h3>Objekt / Gruppe</h3>
+                    <p>Die Gruppe bündelt mehrere Szenarien zu einer Immobilie. Beim Laden kannst du nach dieser Gruppe filtern.</p>
+                </article>
+                <article>
+                    <h3>Speichern und Laden</h3>
+                    <p>Gespeichert wird in deinem privaten Workspace. Ein gleichnamiges Szenario wird aktualisiert. Ändert sich der Szenarioname und du speicherst, entsteht eine neue Variante.</p>
+                </article>
+                <article>
+                    <h3>Umbenennen</h3>
+                    <p>Benennt das ausgewählte gespeicherte Szenario um und verschiebt es auf den neuen Dateinamen. Dabei wird keine Kopie angelegt.</p>
+                </article>
+                <article>
+                    <h3>Löschen</h3>
+                    <p>Löscht das ausgewählte gespeicherte Szenario aus deinem Workspace. Die aktuell sichtbaren Eingaben bleiben als ungespeicherter Entwurf im Browser stehen.</p>
+                </article>
+                <article>
+                    <h3>Gruppe ändern</h3>
+                    <p>Wenn du nur Objekt / Gruppe änderst und speicherst, bleibt das Szenario gleich und wird in die neue Gruppe einsortiert.</p>
+                </article>
+                <article>
+                    <h3>Workspace-Link</h3>
+                    <p>Kopiert den privaten Link zu deinem Workspace. Wer diesen Link kennt, kann deine gespeicherten Szenarien sehen und bearbeiten.</p>
+                </article>
+                <article>
+                    <h3>Szenario teilen</h3>
+                    <p>Erzeugt einen Import-Link. Der Empfänger erhält eine Kopie in seinem eigenen Workspace und überschreibt deine Datei nicht.</p>
+                </article>
+            </div>
+        </details>
+        <details class="rei-details">
+            <summary>Formeln anzeigen</summary>
+            <div class="rei-formulas" data-role="formulas"></div>
+        </details>
+        <details class="rei-details">
+            <summary>Legende Kennzahlen</summary>
+            <div class="rei-scale-legend" data-role="scale-legend"></div>
+        </details>
+        <details class="rei-details">
+            <summary>Szenariovergleich</summary>
+            <div class="rei-scenario-help">
+                <article>
+                    <h3>Basis</h3>
+                    <p>Verwendet die aktuell eingegebenen Werte unverändert.</p>
+                </article>
+                <article>
+                    <h3>Konservativ</h3>
+                    <p>Wertsteigerung -1 Prozentpunkt, Mietsteigerung -1 Prozentpunkt, Leerstand +3 Prozentpunkte, Ausgabensteigerung +1 Prozentpunkt.</p>
+                </article>
+                <article>
+                    <h3>Optimistisch</h3>
+                    <p>Wertsteigerung +1 Prozentpunkt, Mietsteigerung +1 Prozentpunkt, Leerstand -1 Prozentpunkt, jeweils nicht unter 0 %.</p>
+                </article>
+            </div>
+        </details>
+        </div>
+    </section>
+
+    <div class="rei-alerts" data-role="warnings"></div>
+
+    <section class="rei-layout">
+        <form class="rei-form" data-role="scenario-form" autocomplete="off">
+
+            <div class="rei-section">
+                <div class="rei-section-head">
+                    <h2>Objekt</h2>
+                    <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="section-toggle" aria-label="Objekt einklappen" aria-expanded="true"></button>
+                </div>
+                <div class="rei-section-body">
+                <div class="row g-2">
+                    <label class="col-md-6">Objektname<input class="form-control" data-path="property.name" value="Musterwohnung"></label>
+                    <label class="col-md-6">Adresse<input class="form-control" data-path="property.address"></label>
+                    <label class="col-md-3">Bundesland<select class="form-select" data-path="property.state"><option value="BY">Bayern</option><option value="BW">Baden-Württemberg</option><option value="BE">Berlin</option><option value="BB">Brandenburg</option><option value="HB">Bremen</option><option value="HH">Hamburg</option><option value="HE">Hessen</option><option value="MV">Mecklenburg-Vorpommern</option><option value="NI">Niedersachsen</option><option value="NW">Nordrhein-Westfalen</option><option value="RP">Rheinland-Pfalz</option><option value="SL">Saarland</option><option value="SN">Sachsen</option><option value="ST">Sachsen-Anhalt</option><option value="SH">Schleswig-Holstein</option><option value="TH">Thüringen</option></select></label>
+                    <label class="col-md-2">Kaufjahr<input class="form-control" type="number" step="1" data-integer data-path="property.purchaseYear" value="2026"></label>
+                    <label class="col-md-2">Kaufmonat<input class="form-control" type="number" min="1" max="12" step="1" data-integer data-month data-path="property.purchaseMonth" value="1"></label>
+                    <label class="col-md-2">Fertig Jahr<input class="form-control" type="number" step="1" data-integer data-path="property.completionYear" value="2026"></label>
+                    <label class="col-md-2">Fertig Monat<input class="form-control" type="number" min="1" max="12" step="1" data-integer data-month data-path="property.completionMonth" value="6"></label>
+                    <label class="col-md-2">Mietjahr<input class="form-control" type="number" step="1" data-integer data-path="property.rentStartYear" value="2026"></label>
+                    <label class="col-md-2">Mietmonat<input class="form-control" type="number" min="1" max="12" step="1" data-integer data-month data-path="property.rentStartMonth" value="7"></label>
+                    <label class="col-md-2">Verkaufsjahr<input class="form-control" type="number" step="1" data-integer data-path="property.saleYear" value="2036"></label>
+                    <label class="col-md-2">Verkaufsmonat<input class="form-control" type="number" min="1" max="12" step="1" data-integer data-month data-path="property.saleMonth" value="12"></label>
+                    <label class="col-md-2">Wohnfläche m²<input class="form-control" type="number" step="0.01" data-path="property.livingArea" value="72"></label>
+                    <label class="col-md-3">Kaufpreis Wohnung<input class="form-control" type="number" step="0.01" data-path="property.apartmentPurchasePrice" value="300000"></label>
+                    <label class="col-md-3">Sonstige Bestandteile<input class="form-control" type="number" step="0.01" data-path="property.otherPurchasePrice" value="0"></label>
+                    <label class="col-md-3">Küche/Möbel Kaufpreis<input class="form-control" type="number" step="0.01" data-path="property.furniturePurchasePrice" value="0"></label>
+                    <label class="col-md-2">Grund %<input class="form-control" type="number" step="0.01" data-path="property.landSharePercent" value="20"></label>
+                    <label class="col-md-2">Gebäude %<input class="form-control" type="number" step="0.01" data-path="property.buildingSharePercent" value="80"></label>
+                    <label class="col-md-2">Energieklasse<input class="form-control" data-path="property.energyClass"></label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="property.newBuilding" checked> Neubau</label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="property.furnished"> Möbliert</label>
+                </div>
+                </div>
+            </div>
+
+            <div class="rei-section">
+                <div class="rei-section-head">
+                    <h2>Stellplätze</h2>
+                    <div class="rei-section-actions">
+                        <button class="btn btn-sm btn-outline-primary" type="button" data-role="add-parking">Hinzufügen</button>
+                        <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="section-toggle" aria-label="Stellplätze einklappen" aria-expanded="true"></button>
+                    </div>
+                </div>
+                <div class="rei-section-body">
+                <div class="rei-repeater" data-role="parking-list"></div>
+                </div>
+            </div>
+
+            <div class="rei-section">
+                <div class="rei-section-head">
+                    <h2>Miete und laufende Ausgaben</h2>
+                    <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="section-toggle" aria-label="Miete und laufende Ausgaben einklappen" aria-expanded="true"></button>
+                </div>
+                <div class="rei-section-body">
+                <div class="row g-2">
+                    <label class="col-md-3">Kaltmiete Wohnung mtl.<input class="form-control" type="number" step="0.01" data-path="rent.apartmentMonthlyRent" value="1200"></label>
+                    <label class="col-md-2">Mietsteigerung %<input class="form-control" type="number" step="0.01" data-path="rent.annualIncreasePercent" value="2"></label>
+                    <label class="col-md-2">alle x Jahre<input class="form-control" type="number" step="1" data-integer data-path="rent.increaseEveryYears" value="1"></label>
+                    <label class="col-md-2">Leerstand %<input class="form-control" type="number" step="0.01" data-path="rent.vacancyPercent" value="2"></label>
+                    <label class="col-md-3">sonstige Einnahmen p.a.<input class="form-control" type="number" step="0.01" data-path="rent.otherAnnualIncome" value="0"></label>
+                    <label class="col-md-3">Hausgeld nicht umlagefähig<input class="form-control" type="number" step="0.01" data-path="expenses.nonRecoverableHausgeldMonthly" value="180"></label>
+                    <label class="col-md-3">Instandhaltungsrücklage <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/esth/2024/A-Einkommensteuergesetz/II-Einkommen-2-24b/8-Die-einzelnen-Einkunftsarten-13-24b/f-Vermietung-und-Verpachtung-21/Paragraf-21/inhalt.html" target="_blank" rel="noopener" title="EStH § 21">↗</a><input class="form-control" type="number" step="0.01" data-path="expenses.maintenanceReserveMonthly" value="80"></label>
+                    <label class="col-md-3">Verwaltung<input class="form-control" type="number" step="0.01" data-path="expenses.managementMonthly" value="35"></label>
+                    <label class="col-md-3">Service / Sonstiges<input class="form-control" type="number" step="0.01" data-path="expenses.servicePoolMonthly" value="0"></label>
+                    <label class="col-md-3">Möbelrücklage<input class="form-control" type="number" step="0.01" data-path="expenses.furnitureReserveMonthly" value="0"></label>
+                    <label class="col-md-3">sonstige Kosten mtl.<input class="form-control" type="number" step="0.01" data-path="expenses.otherMonthlyCosts" value="0"></label>
+                    <label class="col-md-3">Ausgabensteigerung %<input class="form-control" type="number" step="0.01" data-path="expenses.annualIncreasePercent" value="2"></label>
+                    <label class="col-md-3">alle x Jahre<input class="form-control" type="number" step="1" data-integer data-path="expenses.increaseEveryYears" value="1"></label>
+                </div>
+                </div>
+            </div>
+
+            <div class="rei-section">
+                <div class="rei-section-head">
+                    <h2>Kaufnebenkosten und Bauzeitzinsen</h2>
+                    <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="section-toggle" aria-label="Kaufnebenkosten und Bauzeitzinsen einklappen" aria-expanded="true"></button>
+                </div>
+                <div class="rei-section-body">
+                <div class="row g-2">
+                    <label class="col-md-2">GrESt %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.realEstateTransferTaxPercent" value="3.5"></label>
+                    <label class="col-md-2">Notar %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.notaryPercent" value="1.5"></label>
+                    <label class="col-md-2">Grundbuch Kauf %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.landRegisterPurchasePercent" value="0.5"></label>
+                    <label class="col-md-2">Pfandrecht %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.landRegisterLienPercent" value="0.5"></label>
+                    <label class="col-md-2">Makler %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.brokerPercent" value="0"></label>
+                    <label class="col-md-2">sonstige KNK<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.otherAcquisitionCosts" value="0"></label>
+                    <label class="col-md-2">Kreditkosten<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.otherFinancingCosts" value="0"></label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="acquisitionCosts.financingCostsDeductible" checked> Pfandrecht/Kreditkosten WK <a class="rei-source-link" href="https://www.gesetze-im-internet.de/estg/__9.html" target="_blank" rel="noopener" title="§ 9 EStG">↗</a></label>
+                </div>
+                <div class="rei-subsection-head">
+                    <h3>Bauzeitzinsen je Jahr</h3>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-role="add-construction-interest">Hinzufügen</button>
+                </div>
+                <div class="rei-inline-note">
+                    <strong>finanziert</strong>: kein direkter Eigenkapitaleinsatz; Finanzierungsbedarf bitte im Kreditmodul berücksichtigen.
+                    <strong>nicht finanziert</strong>: direkter Cash-Abfluss und damit Eigenkapitaleinsatz in der Renditerechnung.
+                    <strong>Werbungskosten</strong> steuert unabhängig davon nur die steuerliche Berücksichtigung.
+                </div>
+                <div class="rei-repeater" data-role="construction-interest-list"></div>
+                </div>
+            </div>
+
+            <div class="rei-section">
+                <div class="rei-section-head">
+                    <h2>Finanzierung</h2>
+                    <div class="rei-section-actions">
+                        <button class="btn btn-sm btn-outline-primary" type="button" data-role="add-loan">Hinzufügen</button>
+                        <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="section-toggle" aria-label="Finanzierung einklappen" aria-expanded="true"></button>
+                    </div>
+                </div>
+                <div class="rei-section-body">
+                <div class="row g-2 mb-2">
+                    <label class="col-md-3">Anfangs-Eigenkapital<input class="form-control" type="number" step="0.01" data-path="settings.initialEquityAmount" value="0"></label>
+                    <div class="col-md-9 rei-equity-note">
+                        <div class="rei-inline-note">
+                            Das Anfangs-Eigenkapital dient als Renditebasis. Es reduziert Kreditbeträge nicht automatisch; Kreditmodule bitte selbst entsprechend erfassen.
+                        </div>
+                    </div>
+                </div>
+                <div class="rei-repeater" data-role="loan-list"></div>
+                </div>
+            </div>
+
+            <div class="rei-section">
+                <div class="rei-section-head">
+                    <h2>AfA, Steuer, Verkauf</h2>
+                    <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="section-toggle" aria-label="AfA, Steuer, Verkauf einklappen" aria-expanded="true"></button>
+                </div>
+                <div class="rei-section-body">
+                <div class="row g-2">
+                    <label class="col-md-2">AfA Startjahr<input class="form-control" type="number" step="1" data-integer data-path="depreciation.startYear" value="2026"></label>
+                    <label class="col-md-2">AfA Startmonat<input class="form-control" type="number" min="1" max="12" step="1" data-integer data-month data-path="depreciation.startMonth" value="6"></label>
+                    <label class="col-md-2">Gebäude-Basis<input class="form-control" type="number" step="0.01" data-path="depreciation.buildingBasis" value="0"></label>
+                    <label class="col-md-2">degressiv %<input class="form-control" type="number" step="0.01" data-path="depreciation.degressiveRatePercent" value="5"></label>
+                    <label class="col-md-2">linear %<input class="form-control" type="number" step="0.01" data-path="depreciation.linearRatePercent" value="3"></label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.degressiveActive" checked> degressiv</label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.autoSwitchToLinear" checked> Wechsel linear</label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.special7bActive"> §7b <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/esth/2024/A-Einkommensteuergesetz/II-Einkommen-2-24b/3-Gewinn-4-7i/Paragraf-7b/inhalt.html" target="_blank" rel="noopener" title="EStH § 7b">↗</a></label>
+                    <label class="col-md-2">§7b Bauantrag<input class="form-control" type="date" data-path="depreciation.special7bApplicationDate" value=""></label>
+                    <label class="col-md-2">§7b Fläche m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bArea" value="0"></label>
+                    <label class="col-md-2">§7b Baukostenlimit €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bConstructionCostLimitPerSqm" value="5200"></label>
+                    <label class="col-md-2">§7b Baukosten Ist €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bActualConstructionCostPerSqm" value="0"></label>
+                    <label class="col-md-2">§7b Förderlimit €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bLimitPerSqm" value="4000"></label>
+                    <label class="col-md-2">§7b begünstigte AH-Kosten<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bBasis" value="0" readonly></label>
+                    <label class="col-md-2">§7b AH-Kosten je m²<input class="form-control" type="number" step="0.01" data-role="special7b-costs-per-sqm" value="0" readonly></label>
+                    <label class="col-md-2">§7b %<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bRatePercent" value="5"></label>
+                    <label class="col-md-2">§7b Jahre<input class="form-control" type="number" step="1" data-integer data-path="depreciation.special7bYears" value="4"></label>
+                    <label class="col-md-2">Möbel/Küche Basis<input class="form-control" type="number" step="0.01" data-path="depreciation.furnitureBasis" value="0"></label>
+                    <label class="col-md-2">Möbel AfA %<input class="form-control" type="number" step="0.01" data-path="depreciation.furnitureRatePercent" value="10"></label>
+                    <label class="col-md-3">Steuerberechnung<select class="form-select" data-path="tax.calculationMethod"><option value="marginal_rate">Grenzsteuersatz vereinfacht</option><option value="section_32a">Einkommensteuertarif nach §32a EStG</option></select></label>
+                    <label class="col-md-3">zvE vor Investition<input class="form-control" type="number" step="0.01" data-path="tax.taxableIncomeBeforeInvestment" value="80000"></label>
+                    <label class="col-md-2">zvE-Steigerung % p.a.<input class="form-control" type="number" step="0.01" data-path="tax.taxableIncomeAnnualIncreasePercent" value="0"></label>
+                    <label class="col-md-2">Grenzsteuer %<input class="form-control" type="number" step="0.01" data-path="tax.marginalTaxRatePercent" value="42" data-role="marginal-tax-rate"></label>
+                    <label class="col-md-2">Veranlagung<select class="form-select" data-path="tax.assessmentType"><option value="single">Einzel</option><option value="splitting">Splitting</option></select></label>
+                    <label class="col-md-2">Steuerjahr<input class="form-control" type="number" step="1" data-integer data-path="tax.taxYear" value="2026"></label>
+                    <div class="col-md-2 rei-check">Soli automatisch <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/lsth/2026/B-Anhaenge/Anhang-27/I/inhalt.html" target="_blank" rel="noopener" title="SolzG 2026">↗</a></div>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="tax.churchTax"> Kirchensteuer <a class="rei-source-link" href="https://www.kirchensteuer-wirkt.de/hoehe-kirchensteuer" target="_blank" rel="noopener" title="Kirchensteuer">↗</a></label>
+                    <label class="col-md-3">Kirchensteuer-Land<select class="form-select" data-path="tax.churchTaxState"><option value="BY">Bayern (8 %)</option><option value="BW">Baden-Württemberg (8 %)</option><option value="BE">Berlin (9 %)</option><option value="BB">Brandenburg (9 %)</option><option value="HB">Bremen (9 %)</option><option value="HH">Hamburg (9 %)</option><option value="HE">Hessen (9 %)</option><option value="MV">Mecklenburg-Vorpommern (9 %)</option><option value="NI">Niedersachsen (9 %)</option><option value="NW">Nordrhein-Westfalen (9 %)</option><option value="RP">Rheinland-Pfalz (9 %)</option><option value="SL">Saarland (9 %)</option><option value="SN">Sachsen (9 %)</option><option value="ST">Sachsen-Anhalt (9 %)</option><option value="SH">Schleswig-Holstein (9 %)</option><option value="TH">Thüringen (9 %)</option></select></label>
+                    <label class="col-md-2">Wertsteigerung %<input class="form-control" type="number" step="0.01" data-path="sale.annualValueIncreasePercent" value="2"></label>
+                    <label class="col-md-2">Verkaufskosten %<input class="form-control" type="number" step="0.01" data-path="sale.sellingCostsPercent" value="1"></label>
+                    <label class="col-md-3">Vorfälligkeit<input class="form-control" type="number" step="0.01" data-path="sale.prepaymentPenaltyAmount" value="0"></label>
+                    <label class="col-md-2">Diskontsatz %<input class="form-control" type="number" step="0.01" data-path="settings.discountRatePercent" value="5"></label>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="sale.taxFreeSale" checked> steuerfrei</label>
+                    <div class="col-md-12">
+                        <div class="rei-inline-note">
+                            Für die 10-Jahres-Frist nach <a href="https://www.gesetze-im-internet.de/estg/__23.html" target="_blank" rel="noopener">§ 23 EStG</a> ist grundsätzlich das Datum des bindenden notariellen Kaufvertrags maßgeblich, nicht Fertigstellung, Übergabe oder Mietbeginn. Die Annahme „steuerfrei“ sollte daran geprüft werden.
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+        </form>
+
+        <aside class="rei-side">
+            <h2>Kennzahlen</h2>
+            <section class="rei-summary" data-role="summary"></section>
+            <h2>Kaufpreisbestandteile</h2>
+            <div class="rei-breakdown" data-role="purchase-breakdown"></div>
+            <h2>Erwerbsnebenkosten</h2>
+            <div class="rei-breakdown" data-role="acquisition-breakdown"></div>
+            <h2>Einmalige Finanzierungskosten</h2>
+            <div class="rei-breakdown" data-role="financing-breakdown"></div>
+            <h2>Gesamtaufwand</h2>
+            <div class="rei-breakdown" data-role="total-breakdown"></div>
+            <h2>AfA-Bemessungsgrundlagen</h2>
+            <div class="rei-breakdown" data-role="depreciation-basis-breakdown"></div>
+        </aside>
+    </section>
+
+    <section class="rei-results">
+        <div class="rei-section-head">
+            <h2>Jahresübersicht</h2>
+            <span data-role="row-count">0 Jahre</span>
+        </div>
+        <div data-role="year-grid" class="rei-grid"></div>
+    </section>
+
+    <section class="rei-results is-collapsed" data-role="comparison-section">
+        <div class="rei-section-head">
+            <h2>Szenariovergleich</h2>
+            <div class="rei-section-actions">
+                <span>nominal, Barwert, Future Value</span>
+                <button class="btn btn-sm btn-outline-secondary rei-section-toggle" type="button" data-role="comparison-toggle" aria-label="Szenariovergleich ausklappen" aria-expanded="false"></button>
+            </div>
+        </div>
+        <div class="rei-result-body" data-role="comparison-body" hidden>
+            <div data-role="comparison-grid" class="rei-grid rei-grid--small"></div>
+        </div>
+    </section>
+
+    <section class="rei-results">
+        <div class="rei-section-head">
+            <h2>Rechenwege</h2>
+            <span>mit eingesetzten Zahlen</span>
+        </div>
+        <div class="rei-calculation-breakdown" data-role="calculation-breakdown"></div>
+    </section>
+</div>
