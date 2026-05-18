@@ -167,6 +167,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.normalizeIntegerInput(event.target, false);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, false);
+            this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
             this.saveDraft();
             this.scheduleCalculate();
@@ -175,6 +176,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.normalizeIntegerInput(event.target, true);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, true);
+            this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
             this.saveDraft();
             this.calculate();
@@ -337,10 +339,16 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['buildingSharePercent', 'Gebäude %', 'number', data.buildingSharePercent ?? 80],
             ['landSharePercent', 'Grund %', 'number', data.landSharePercent ?? 20],
             ['depreciable', 'AfA', 'checkbox', data.depreciable ?? true],
+            ['depreciationMode', 'AfA-Typ', 'segment', data.depreciationMode || 'building', [
+                ['building', 'Tiefgarage wie Objekt'],
+                ['custom', 'Außenstellplatz eigener Satz'],
+            ]],
+            ['depreciationRatePercent', 'AfA %', 'number', data.depreciationRatePercent ?? 5.26],
             ['includedInPurchasePrice', 'im Kaufpreis', 'checkbox', data.includedInPurchasePrice ?? true],
         ]);
         this.parkingList.append(row);
         this.updateRepeaterNames(this.parkingList, 'parkingUnits');
+        this.updateParkingDepreciationRateState(row);
         this.syncSpecial7bCalculatedCosts();
         this.saveDraft();
     }
@@ -389,9 +397,36 @@ class GUI_InvestmentCalculator extends GUI_Module
         const row = document.createElement('div');
         row.className = 'rei-repeater-row';
         row.dataset.type = type;
-        fields.forEach(([field, label, inputType, value]) => {
-            const wrapper = document.createElement('label');
+        fields.forEach(([field, label, inputType, value, options]) => {
+            const wrapper = document.createElement(inputType === 'segment' ? 'div' : 'label');
             wrapper.textContent = label;
+            if(inputType === 'checkbox') {
+                wrapper.className = 'rei-check-field';
+            }
+            if(inputType === 'segment') {
+                wrapper.className = 'rei-repeater-field';
+                const group = document.createElement('div');
+                group.className = 'rei-segment';
+                (options || []).forEach(([optionValue, optionLabel]) => {
+                    const optionWrapper = document.createElement('label');
+                    const input = document.createElement('input');
+                    input.type = 'radio';
+                    input.dataset.field = field;
+                    input.value = optionValue;
+                    input.checked = value === optionValue;
+                    if(type === 'parking' && field === 'depreciationMode') {
+                        input.addEventListener('change', () => requestAnimationFrame(() => this.updateParkingDepreciationRateState(row)));
+                    }
+                    const text = document.createElement('span');
+                    text.textContent = optionLabel;
+                    optionWrapper.append(input, text);
+                    group.append(optionWrapper);
+                });
+                wrapper.append(group);
+                row.append(wrapper);
+                return;
+            }
+
             const input = document.createElement('input');
             input.className = inputType === 'checkbox' ? 'form-check-input' : 'form-control form-control-sm';
             input.type = inputType;
@@ -450,6 +485,24 @@ class GUI_InvestmentCalculator extends GUI_Module
                 input.name = `${prefix}_${index}_${input.dataset.field}`;
             });
         });
+    }
+
+    updateParkingDepreciationControlsFromEvent(target)
+    {
+        const row = target?.closest?.('.rei-repeater-row[data-type="parking"]');
+        if(row) {
+            this.updateParkingDepreciationRateState(row);
+        }
+    }
+
+    updateParkingDepreciationRateState(row)
+    {
+        const mode = row.querySelector('input[type="radio"][data-field="depreciationMode"]:checked')?.value || 'building';
+        const depreciable = row.querySelector('[data-field="depreciable"]')?.checked ?? true;
+        const rate = row.querySelector('[data-field="depreciationRatePercent"]');
+        if(rate) {
+            rate.disabled = !depreciable || mode !== 'custom';
+        }
     }
 
     isIntegerRepeaterField(type, field)
@@ -1099,7 +1152,12 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         return Array.from(container.children).map(row => {
             const data = {};
-            row.querySelectorAll('[data-field]').forEach(input => data[input.dataset.field] = this.inputValue(input));
+            row.querySelectorAll('[data-field]').forEach(input => {
+                const value = this.inputValue(input);
+                if(value !== undefined) {
+                    data[input.dataset.field] = value;
+                }
+            });
             return data;
         });
     }
@@ -1108,6 +1166,9 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         if(input.type === 'checkbox') {
             return input.checked;
+        }
+        if(input.type === 'radio') {
+            return input.checked ? input.value : undefined;
         }
         if(input.type === 'number') {
             if(input.dataset.integer !== undefined) {
@@ -1266,6 +1327,10 @@ class GUI_InvestmentCalculator extends GUI_Module
     renderDepreciationBasisBreakdown(summary)
     {
         const special = summary.special7b || {};
+        const parkingRateLabel = summary.parkingDepreciationMixedRates
+            ? 'gemischt'
+            : (Number(summary.parkingDepreciationRate || 0) > 0 ? this.pct(summary.parkingDepreciationRate) : '');
+        const parkingBasisLabel = parkingRateLabel ? `Stellplatz AfA-Basis (${parkingRateLabel})` : 'Stellplatz AfA-Basis';
         const rows = [
             ['Gebäude-AfA-Basis', summary.buildingDepreciationBasis, true],
             ['Gebäude-AH-Kosten vor §7b-Kappung', special.eligibleCosts, false],
@@ -1280,7 +1345,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['§7b Bemessungsgrundlage je m²', special.assessmentBasisPerSqm, false, value => `${this.eur(value)} / m²`],
             ['§7b Sonder-AfA p.a.', special.annualAmount, true],
             ['Möbel/Küche AfA-Basis', summary.furnitureDepreciationBasis, true],
-            ['Stellplatz AfA-Basis', summary.parkingDepreciationBasis, true],
+            [parkingBasisLabel, summary.parkingDepreciationBasis, true],
         ];
         this.depreciationBasisBreakdown.innerHTML = this.renderBreakdownRows(rows);
     }

@@ -257,6 +257,55 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertGreaterThan($without['yearlyRows'][1]['depreciationTotal'], $with['yearlyRows'][1]['depreciationTotal']);
     }
 
+    public function testParkingDepreciationDefaultsToLinearBuildingRate(): void
+    {
+        $result = $this->calculate($this->baseScenario())->toArray();
+
+        self::assertEqualsWithDelta(16000, $result['summary']['parkingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(0.03, $result['summary']['parkingDepreciationRate'], 0.0001);
+        self::assertFalse($result['summary']['parkingDepreciationMixedRates']);
+        self::assertEqualsWithDelta(480, $result['yearlyRows'][1]['depreciationParking'], 0.01);
+    }
+
+    public function testParkingDepreciationCanUseCustomRatePerParkingUnit(): void
+    {
+        $scenario = $this->baseScenario();
+        $scenario['parkingUnits'][0]['depreciationMode'] = 'custom';
+        $scenario['parkingUnits'][0]['depreciationRatePercent'] = 5.26;
+
+        $result = $this->calculate($scenario)->toArray();
+
+        self::assertEqualsWithDelta(0.0526, $result['summary']['parkingDepreciationRate'], 0.0001);
+        self::assertEqualsWithDelta(841.60, $result['yearlyRows'][1]['depreciationParking'], 0.01);
+    }
+
+    public function testParkingDepreciationCanBeMixedOrDisabled(): void
+    {
+        $scenario = $this->baseScenario();
+        $scenario['parkingUnits'][] = [
+            'label' => 'Außenstellplatz',
+            'purchasePrice' => 10000,
+            'monthlyRent' => 40,
+            'buildingSharePercent' => 100,
+            'landSharePercent' => 0,
+            'depreciable' => true,
+            'depreciationMode' => 'custom',
+            'depreciationRatePercent' => 5.26,
+            'includedInPurchasePrice' => true,
+        ];
+
+        $mixed = $this->calculate($scenario)->toArray();
+        self::assertTrue($mixed['summary']['parkingDepreciationMixedRates']);
+        self::assertEqualsWithDelta(1006, $mixed['yearlyRows'][1]['depreciationParking'], 0.01);
+
+        $scenario['parkingUnits'][0]['depreciable'] = false;
+        $scenario['parkingUnits'][1]['buildingSharePercent'] = 0;
+        $scenario['parkingUnits'][1]['landSharePercent'] = 100;
+        $disabled = $this->calculate($scenario)->toArray();
+        self::assertEqualsWithDelta(0, $disabled['summary']['parkingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(0, $disabled['yearlyRows'][1]['depreciationParking'], 0.01);
+    }
+
     public function testCostAllocationSeparatesLandBuildingAndFurniture(): void
     {
         $scenario = $this->baseScenario();

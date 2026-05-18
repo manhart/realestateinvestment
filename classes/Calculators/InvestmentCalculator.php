@@ -37,9 +37,8 @@ final class InvestmentCalculator
         $scenario->depreciation->buildingBasis = $scenario->depreciation->buildingBasis > 0
             ? $scenario->depreciation->buildingBasis
             : $this->buildingDepreciationBasis($costAllocation, $acquisition['withoutFinancing']);
-        $scenario->depreciation->parkingBasis = $scenario->depreciation->parkingBasis > 0
-            ? $scenario->depreciation->parkingBasis
-            : $costAllocation['parkingBuildingCosts'];
+        $scenario->depreciation->parkingDepreciationItems = $this->parkingDepreciationItems($scenario);
+        $scenario->depreciation->parkingBasis = array_sum(array_map(static fn(array $item): float => (float)$item['basis'], $scenario->depreciation->parkingDepreciationItems));
         $scenario->depreciation->furnitureBasis = $scenario->depreciation->furnitureBasis > 0
             ? $scenario->depreciation->furnitureBasis
             : $costAllocation['furnitureCosts'];
@@ -232,6 +231,44 @@ final class InvestmentCalculator
             'landCosts' => $propertyLand + $parkingLand,
             'buildingCosts' => $propertyBuilding + $parkingBuilding,
         ];
+    }
+
+    /**
+     * @return array<int, array{label: string, basis: float, rate: float, mode: string}>
+     */
+    private function parkingDepreciationItems(RealEstateInvestmentScenario $scenario): array
+    {
+        if($scenario->depreciation->parkingBasis > 0) {
+            return [[
+                'label' => 'Stellplätze',
+                'basis' => $scenario->depreciation->parkingBasis,
+                'rate' => $scenario->depreciation->parkingRate > 0 ? $scenario->depreciation->parkingRate : $scenario->depreciation->linearRate,
+                'mode' => 'custom',
+            ]];
+        }
+
+        $items = [];
+        foreach($scenario->parkingUnits as $unit) {
+            if(!$unit->includedInPurchasePrice || !$unit->depreciable) {
+                continue;
+            }
+
+            $basis = $unit->purchasePrice * $unit->buildingShare;
+            if($basis <= 0) {
+                continue;
+            }
+
+            $rate = $unit->depreciationMode === 'custom'
+                ? $unit->depreciationRate
+                : $scenario->depreciation->linearRate;
+            $items[] = [
+                'label' => $unit->label,
+                'basis' => $basis,
+                'rate' => max($rate, 0),
+                'mode' => $unit->depreciationMode,
+            ];
+        }
+        return $items;
     }
 
     private function buildingDepreciationBasis(array $costAllocation, float $acquisitionCostsWithoutFinancing): float
@@ -499,6 +536,8 @@ final class InvestmentCalculator
             'buildingDepreciationBasis' => $scenario->depreciation->buildingBasis,
             'furnitureDepreciationBasis' => $scenario->depreciation->furnitureBasis,
             'parkingDepreciationBasis' => $scenario->depreciation->parkingBasis,
+            'parkingDepreciationRate' => $this->singleParkingDepreciationRate($scenario->depreciation->parkingDepreciationItems),
+            'parkingDepreciationMixedRates' => $this->hasMixedParkingDepreciationRates($scenario->depreciation->parkingDepreciationItems),
             'totalCosts' => $totalCosts,
             'constructionInterestTotal' => $constructionInterestTotal,
             'constructionInterestCashTotal' => $constructionInterestCashTotal,
@@ -516,6 +555,33 @@ final class InvestmentCalculator
             'dscr' => $firstOperatingRow?->dscr ?? 0.0,
             ...$metrics,
         ];
+    }
+
+    private function singleParkingDepreciationRate(array $items): float
+    {
+        $rates = $this->parkingDepreciationRates($items);
+        return count($rates) === 1 ? reset($rates) : 0.0;
+    }
+
+    private function hasMixedParkingDepreciationRates(array $items): bool
+    {
+        return count($this->parkingDepreciationRates($items)) > 1;
+    }
+
+    /**
+     * @return float[]
+     */
+    private function parkingDepreciationRates(array $items): array
+    {
+        $rates = [];
+        foreach($items as $item) {
+            if((float)($item['basis'] ?? 0) <= 0) {
+                continue;
+            }
+            $rate = round((float)($item['rate'] ?? 0), 8);
+            $rates[(string)$rate] = $rate;
+        }
+        return array_values($rates);
     }
 
     /**
@@ -964,7 +1030,7 @@ final class InvestmentCalculator
             ? max($special7b['assessmentBasis'], 0) * $scenario->depreciation->special7bRate
             : 0.0;
         $furniture = $scenario->depreciation->furnitureBasis * $scenario->depreciation->furnitureRate * $months / 12;
-        $parking = $scenario->depreciation->parkingBasis * $scenario->depreciation->parkingRate * $months / 12;
+        $parking = $this->parkingDepreciationForMonths($scenario->depreciation->parkingDepreciationItems, $months);
         $total = min($buildingDepreciation + $special, $buildingBasis) + $furniture + $parking;
 
         return [
@@ -999,8 +1065,8 @@ final class InvestmentCalculator
             [
                 'group' => 'AfA',
                 'label' => 'AfA Stellplatz '.$year,
-                'formula' => 'Stellplatz-AfA-Basis × AfA-Satz × AfA-Monate / 12',
-                'values' => $scenario->depreciation->parkingBasis.' × '.$this->percent($scenario->depreciation->parkingRate).' × '.$months.' / 12',
+                'formula' => 'Σ Stellplatz-AfA-Basis × jeweiliger AfA-Satz × AfA-Monate / 12',
+                'values' => $this->parkingDepreciationValues($scenario->depreciation->parkingDepreciationItems, $months),
                 'result' => $parking,
             ],
             [
@@ -1011,6 +1077,24 @@ final class InvestmentCalculator
                 'result' => $total,
             ],
         ];
+    }
+
+    private function parkingDepreciationForMonths(array $items, int $months): float
+    {
+        $total = 0.0;
+        foreach($items as $item) {
+            $total += max((float)($item['basis'] ?? 0), 0) * max((float)($item['rate'] ?? 0), 0) * $months / 12;
+        }
+        return $total;
+    }
+
+    private function parkingDepreciationValues(array $items, int $months): string
+    {
+        if($items === []) {
+            return 'keine Stellplatz-AfA-Basis';
+        }
+
+        return implode(' + ', array_map(fn(array $item): string => ($item['label'] ?? 'Stellplatz').': '.((float)($item['basis'] ?? 0)).' × '.$this->percent((float)($item['rate'] ?? 0)).' × '.$months.' / 12', $items));
     }
 
     private function percent(float $rate): string

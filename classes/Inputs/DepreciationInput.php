@@ -29,6 +29,7 @@ final class DepreciationInput
         public float $furnitureRate,
         public float $parkingBasis,
         public float $parkingRate,
+        public array $parkingDepreciationItems = [],
     ) {}
 
     public static function fromArray(array $data, PropertyInput $property): self

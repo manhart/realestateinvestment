@@ -26,7 +26,7 @@ final class DepreciationCalculator
                 ? $specialBasis * $input->special7bRate
                 : 0.0;
             $furniture = $input->furnitureBasis * $input->furnitureRate * $months / 12;
-            $parking = $input->parkingBasis * $input->parkingRate * $months / 12;
+            $parking = $this->parkingDepreciation($input, $months);
             $total = min($baseDepreciation + $special7b, $bookValue) + $furniture + $parking;
 
             $bookValue = max($bookValue - min($baseDepreciation + $special7b, $bookValue), 0);
@@ -41,6 +41,19 @@ final class DepreciationCalculator
         }
 
         return $results;
+    }
+
+    private function parkingDepreciation(DepreciationInput $input, int $months): float
+    {
+        if($input->parkingDepreciationItems === []) {
+            return $input->parkingBasis * $input->parkingRate * $months / 12;
+        }
+
+        $total = 0.0;
+        foreach($input->parkingDepreciationItems as $item) {
+            $total += max((float)($item['basis'] ?? 0), 0) * max((float)($item['rate'] ?? 0), 0) * $months / 12;
+        }
+        return $total;
     }
 
     private function activeMonths(int $year, int $startYear, int $startMonth, int $endYear, int $endMonth): int
