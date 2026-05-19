@@ -17,6 +17,7 @@ final class GUI_Frame extends GUI_CustomFrame
         parent::loadFiles();
 
         Resources\CSS_bootstrap::addResourceTo($this->getHeadData(), IS_PRODUCTION);
+        Resources\CSS_bootstrap_icons::addResourceTo($this->getHeadData(), IS_PRODUCTION);
         Resources\JS__bootstrap::addResourceTo($this->getHeadData(), IS_PRODUCTION, resource: Resources\JS__bootstrap::_bundle);
         Resources\CSS_tabulator::addResourceTo($this->getHeadData(), IS_PRODUCTION, resource: Resources\dir\Dir_tabulator::BS5);
         Resources\JS__tabulator::addResourceTo($this->getHeadData(), IS_PRODUCTION);

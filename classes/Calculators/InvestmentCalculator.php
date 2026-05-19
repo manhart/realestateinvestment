@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace realestateinvestment\classes\Calculators;
 
+use realestateinvestment\classes\Inputs\AcquisitionCostInput;
+use realestateinvestment\classes\Inputs\CalculationSettings;
 use realestateinvestment\classes\Inputs\ConstructionInterestInput;
 use realestateinvestment\classes\Inputs\DepreciationInput;
 use realestateinvestment\classes\Inputs\RealEstateInvestmentScenario;
@@ -36,8 +38,8 @@ final class InvestmentCalculator
 
         $scenario->depreciation->buildingBasis = $scenario->depreciation->buildingBasis > 0
             ? $scenario->depreciation->buildingBasis
-            : $this->buildingDepreciationBasis($costAllocation, $acquisition['withoutFinancing']);
-        $scenario->depreciation->parkingDepreciationItems = $this->parkingDepreciationItems($scenario);
+            : $this->buildingDepreciationBasis($costAllocation, $acquisition);
+        $scenario->depreciation->parkingDepreciationItems = $this->parkingDepreciationItems($scenario, $acquisition);
         $scenario->depreciation->parkingBasis = array_sum(array_map(static fn(array $item): float => (float)$item['basis'], $scenario->depreciation->parkingDepreciationItems));
         $scenario->depreciation->furnitureBasis = $scenario->depreciation->furnitureBasis > 0
             ? $scenario->depreciation->furnitureBasis
@@ -57,10 +59,11 @@ final class InvestmentCalculator
             $this->validator->validate($scenario, $totalCosts, $initialDebt),
             $special7b['warnings'],
         );
-        $loanYears = $this->loanCalculator->calculate($scenario->loans, $startYear, $endYear, $scenario->property->saleMonth);
+        $loanStates = $this->loanCalculator->initialStates($scenario->loans);
         $depreciationYears = $this->depreciationCalculator->calculate($scenario->depreciation, $startYear, $endYear, $scenario->property->saleMonth);
 
         $rows = [];
+        $lastYearIndex = max($endYear - $startYear, 0);
         for($year = $startYear; $year <= $endYear; $year++) {
             $row = new YearlyCalculationResult($year);
             $row->rentedMonths = $this->activeMonths($year, $scenario->property->rentStartYear, $scenario->property->rentStartMonth, $endYear, $scenario->property->saleMonth);
@@ -69,7 +72,7 @@ final class InvestmentCalculator
             $row->deductibleOperatingExpenses = $this->deductibleOperatingExpensesForYear($scenario, $year, $row->rentedMonths);
             $row->operatingCashflow = $row->rent - $row->expenses;
 
-            $loanYear = $loanYears[$year] ?? ['interest' => 0.0, 'repayment' => 0.0, 'annuity' => 0.0, 'remainingDebt' => 0.0];
+            $loanYear = $this->loanCalculator->calculateYear($scenario->loans, $loanStates, $year, $endYear, $scenario->property->saleMonth);
             $row->interest = $loanYear['interest'];
             $row->repayment = $loanYear['repayment'];
             $row->annuity = $loanYear['annuity'];
@@ -87,6 +90,9 @@ final class InvestmentCalculator
             $row->deductibleExpenses = $this->constructionInterestDeductibleForYear($scenario->constructionInterest, $year);
             if($year === $startYear && $scenario->acquisitionCosts->financingCostsDeductible) {
                 $row->deductibleExpenses += $acquisition['financing'];
+            }
+            if($year === $startYear) {
+                $row->deductibleExpenses += $acquisition['immediateDeductibleAcquisitionCosts'];
             }
             $row->advertisingCostsWithoutDepreciation = $row->deductibleOperatingExpenses + $row->interest + $row->deductibleExpenses;
             $row->taxDeductionsTotal = $row->advertisingCostsWithoutDepreciation + $row->depreciationTotal;
@@ -109,7 +115,19 @@ final class InvestmentCalculator
             $row->oneTimeCashCosts = $year === $startYear ? $nonFinancedOneTimeCosts : 0.0;
             $cashConstructionInterest = $this->constructionInterestCashForYear($scenario->constructionInterest, $year);
             $row->netCashflowBeforeTax = $row->rent - $row->expenses - $row->annuity - $cashConstructionInterest - $row->oneTimeCashCosts;
-            $row->netCashflowAfterTax = $row->netCashflowBeforeTax + $row->taxEffect;
+            $row->netCashflowAfterTaxBeforeAutoSpecialRepayment = $row->netCashflowBeforeTax + $row->taxEffect;
+            $autoSpecialRepayment = $this->autoSpecialRepaymentAmount(
+                $scenario->settings,
+                $row->netCashflowAfterTaxBeforeAutoSpecialRepayment,
+                $lastYearIndex - max($year - $startYear, 0),
+            );
+            if($autoSpecialRepayment > 0) {
+                $applied = $this->loanCalculator->applyYearEndSpecialRepayment($scenario->loans, $loanStates, $year, $endYear, $autoSpecialRepayment, $scenario->property->saleMonth);
+                $row->autoSpecialRepayment = $applied['amount'];
+                $row->autoSpecialRepaymentTarget = $applied['target'];
+                $row->remainingDebt = $applied['remainingDebt'];
+            }
+            $row->netCashflowAfterTax = $row->netCashflowAfterTaxBeforeAutoSpecialRepayment - $row->autoSpecialRepayment;
 
             if($year === $endYear) {
                 $row->salePrice = $this->salePrice($scenario, $purchasePrice);
@@ -123,6 +141,7 @@ final class InvestmentCalculator
             $rows[] = $row;
         }
 
+        $this->applyOpportunityInterest($rows, $scenario->settings->discountRate);
         $metrics = $this->metrics($rows, $initialDebt, $scenario->settings->discountRate, $scenario->settings->initialEquityAmount, max($endYear - $startYear, 1));
         $firstOperatingRow = $this->firstOperatingRow($rows);
         $firstTaxEffectRow = $this->firstTaxEffectRow($rows);
@@ -185,6 +204,10 @@ final class InvestmentCalculator
         $landRegisterLien = $initialDebt * $input->landRegisterLienRate;
         $withoutFinancing = $realEstateTransferTax + $notary + $landRegisterPurchase + $broker + $input->otherAcquisitionCosts;
         $financing = $landRegisterLien + $input->otherFinancingCosts;
+        $immediateDeductibleAcquisitionCosts = $input->notaryLandRegisterTaxTreatment === AcquisitionCostInput::NOTARY_LAND_REGISTER_IMMEDIATE_DEDUCTIBLE
+            ? $notary + $landRegisterPurchase
+            : 0.0;
+        $depreciationRelevantWithoutFinancing = $withoutFinancing - $immediateDeductibleAcquisitionCosts;
 
         return [
             'realEstatePurchasePrice' => $realEstatePurchasePrice,
@@ -196,6 +219,8 @@ final class InvestmentCalculator
             'landRegisterLien' => $landRegisterLien,
             'otherFinancingCosts' => $input->otherFinancingCosts,
             'withoutFinancing' => $withoutFinancing,
+            'immediateDeductibleAcquisitionCosts' => $immediateDeductibleAcquisitionCosts,
+            'depreciationRelevantWithoutFinancing' => $depreciationRelevantWithoutFinancing,
             'financing' => $financing,
             'total' => $withoutFinancing + $financing,
         ];
@@ -234,9 +259,9 @@ final class InvestmentCalculator
     }
 
     /**
-     * @return array<int, array{label: string, basis: float, rate: float, mode: string}>
+     * @return array<int, array{label: string, basis: float, rate: float, mode: string, startYear: int, startMonth: int}>
      */
-    private function parkingDepreciationItems(RealEstateInvestmentScenario $scenario): array
+    private function parkingDepreciationItems(RealEstateInvestmentScenario $scenario, array $acquisition): array
     {
         if($scenario->depreciation->parkingBasis > 0) {
             return [[
@@ -244,6 +269,8 @@ final class InvestmentCalculator
                 'basis' => $scenario->depreciation->parkingBasis,
                 'rate' => $scenario->depreciation->parkingRate > 0 ? $scenario->depreciation->parkingRate : $scenario->depreciation->linearRate,
                 'mode' => 'custom',
+                'startYear' => $scenario->depreciation->startYear,
+                'startMonth' => $scenario->depreciation->startMonth,
             ]];
         }
 
@@ -253,7 +280,10 @@ final class InvestmentCalculator
                 continue;
             }
 
-            $basis = $unit->purchasePrice * $unit->buildingShare;
+            $basis = $unit->depreciationBasis > 0
+                ? $unit->depreciationBasis
+                : $unit->purchasePrice * $unit->buildingShare
+                    + $this->allocatedDepreciationRelevantAcquisitionCosts($unit->purchasePrice, $unit->buildingShare, $acquisition);
             if($basis <= 0) {
                 continue;
             }
@@ -266,16 +296,31 @@ final class InvestmentCalculator
                 'basis' => $basis,
                 'rate' => max($rate, 0),
                 'mode' => $unit->depreciationMode,
+                'startYear' => $unit->depreciationStartYear > 0 ? $unit->depreciationStartYear : $scenario->depreciation->startYear,
+                'startMonth' => $unit->depreciationStartMonth > 0 ? $unit->depreciationStartMonth : $scenario->depreciation->startMonth,
             ];
         }
         return $items;
     }
 
-    private function buildingDepreciationBasis(array $costAllocation, float $acquisitionCostsWithoutFinancing): float
+    private function buildingDepreciationBasis(array $costAllocation, array $acquisition): float
     {
-        $realEstateBase = $costAllocation['landCosts'] + $costAllocation['buildingCosts'];
-        $buildingRatio = $realEstateBase > 0 ? $costAllocation['buildingCosts'] / $realEstateBase : 0;
-        return $costAllocation['buildingCosts'] + $acquisitionCostsWithoutFinancing * $buildingRatio;
+        $propertyBase = $costAllocation['propertySplitBase'];
+        $buildingRatio = $propertyBase > 0 ? $costAllocation['propertyBuildingCosts'] / $propertyBase : 0;
+        return $costAllocation['propertyBuildingCosts']
+            + $this->allocatedDepreciationRelevantAcquisitionCosts($propertyBase, $buildingRatio, $acquisition);
+    }
+
+    private function allocatedDepreciationRelevantAcquisitionCosts(float $componentPurchasePrice, float $componentBuildingShare, array $acquisition): float
+    {
+        $realEstatePurchasePrice = max((float)($acquisition['realEstatePurchasePrice'] ?? 0), 0);
+        if($realEstatePurchasePrice <= 0 || $componentPurchasePrice <= 0 || $componentBuildingShare <= 0) {
+            return 0.0;
+        }
+
+        return (float)$acquisition['depreciationRelevantWithoutFinancing']
+            * ($componentPurchasePrice / $realEstatePurchasePrice)
+            * $componentBuildingShare;
     }
 
     private function activeMonths(int $year, int $startYear, int $startMonth, int $endYear, int $endMonth): int
@@ -417,6 +462,40 @@ final class InvestmentCalculator
         return $purchasePrice * ((1 + $scenario->sale->annualValueIncrease) ** $years);
     }
 
+    private function autoSpecialRepaymentAmount(CalculationSettings $settings, float $cashflowAfterTaxBeforeAutoSpecialRepayment, int $yearsUntilSale): float
+    {
+        $positiveCashflow = max($cashflowAfterTaxBeforeAutoSpecialRepayment, 0);
+        $positiveOpportunityInterest = max($cashflowAfterTaxBeforeAutoSpecialRepayment * (((1 + $settings->discountRate) ** max($yearsUntilSale, 0)) - 1), 0);
+
+        return match($settings->autoSpecialRepaymentMode) {
+            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW => $positiveCashflow,
+            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_OPPORTUNITY_INTEREST => $positiveOpportunityInterest,
+            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW_PLUS_OPPORTUNITY_INTEREST => $positiveCashflow + $positiveOpportunityInterest,
+            default => 0.0,
+        };
+    }
+
+    private function autoSpecialRepaymentModeLabel(string $mode): string
+    {
+        return [
+            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW => 'positiver CF nach Steuer',
+            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_OPPORTUNITY_INTEREST => 'positiver Opportunitätszins',
+            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW_PLUS_OPPORTUNITY_INTEREST => 'positiver CF + positiver Opportunitätszins',
+        ][$mode] ?? 'deaktiviert';
+    }
+
+    /**
+     * @param YearlyCalculationResult[] $rows
+     */
+    private function applyOpportunityInterest(array $rows, float $discountRate): void
+    {
+        $lastIndex = max(count($rows) - 1, 0);
+        foreach($rows as $index => $row) {
+            $factor = (1 + $discountRate) ** ($lastIndex - $index);
+            $row->opportunityInterest = $row->netCashflowIncludingSale * ($factor - 1);
+        }
+    }
+
     /**
      * @param YearlyCalculationResult[] $rows
      */
@@ -523,6 +602,9 @@ final class InvestmentCalculator
             'landRegisterLien' => $acquisition['landRegisterLien'],
             'otherFinancingCosts' => $acquisition['otherFinancingCosts'],
             'acquisitionCostsWithoutFinancing' => $acquisition['withoutFinancing'],
+            'immediateDeductibleAcquisitionCosts' => $acquisition['immediateDeductibleAcquisitionCosts'],
+            'depreciationRelevantAcquisitionCostsWithoutFinancing' => $acquisition['depreciationRelevantWithoutFinancing'],
+            'notaryLandRegisterTaxTreatment' => $scenario->acquisitionCosts->notaryLandRegisterTaxTreatment,
             'financingCosts' => $acquisition['financing'],
             'totalAcquisitionAndFinancingCosts' => $acquisition['total'],
         ];
@@ -651,11 +733,19 @@ final class InvestmentCalculator
             ],
             [
                 'group' => 'Werbungskosten',
-                'label' => 'BZZ/Kreditkosten WK',
-                'formula' => 'abzugsfähige Bauzeitzinsen + abzugsfähige Finanzierungskosten',
-                'values' => $deductibleConstructionInterestTotal.' + '.$deductibleFinancingCosts,
-                'result' => $deductibleConstructionInterestTotal + $deductibleFinancingCosts,
+                'label' => 'BZZ/Kreditkosten/Erwerbs-WK',
+                'formula' => 'abzugsfähige Bauzeitzinsen + abzugsfähige Finanzierungskosten + sofort abzugsfähige Notar-/Grundbuchkosten',
+                'values' => $deductibleConstructionInterestTotal.' + '.$deductibleFinancingCosts.' + '.$acquisition['immediateDeductibleAcquisitionCosts'],
+                'result' => $deductibleConstructionInterestTotal + $deductibleFinancingCosts + $acquisition['immediateDeductibleAcquisitionCosts'],
                 'source' => OfficialSourceRegistry::get('esth_21_vuv'),
+            ],
+            [
+                'group' => 'Werbungskosten',
+                'label' => 'sofortige Erwerbs-WK Kaufjahr',
+                'formula' => 'Notar + Grundbuch Kauf, falls steuerliche Behandlung auf sofortige Werbungskosten steht',
+                'values' => $acquisition['notary'].' + '.$acquisition['landRegisterPurchase'],
+                'result' => $acquisition['immediateDeductibleAcquisitionCosts'],
+                'source' => OfficialSourceRegistry::get('estg_9_werbungskosten'),
             ],
             [
                 'group' => 'Gesamtkosten',
@@ -667,8 +757,8 @@ final class InvestmentCalculator
             [
                 'group' => 'AfA',
                 'label' => 'Gebäude-AfA-Basis',
-                'formula' => 'Herstellungskosten/Gebäude + anteilige Erwerbsnebenkosten',
-                'values' => $costAllocation['buildingCosts'].' + anteilig '.$acquisition['withoutFinancing'],
+                'formula' => 'Herstellungskosten/Gebäude + anteilige AfA-relevante Erwerbsnebenkosten',
+                'values' => $costAllocation['buildingCosts'].' + anteilig '.$acquisition['depreciationRelevantWithoutFinancing'],
                 'result' => $scenario->depreciation->buildingBasis,
                 'source' => OfficialSourceRegistry::get('hgb_255_anschaffungskosten'),
             ],
@@ -738,6 +828,17 @@ final class InvestmentCalculator
             array_push($rows, ...$this->taxBreakdownRows($scenario, $firstTaxEffectRow));
         }
 
+        if($scenario->settings->autoSpecialRepaymentMode !== CalculationSettings::AUTO_SPECIAL_REPAYMENT_NONE) {
+            $autoSpecialRepaymentTotal = array_sum(array_map(static fn(YearlyCalculationResult $row): float => $row->autoSpecialRepayment, $yearlyRows));
+            $rows[] = [
+                'group' => 'Finanzierung',
+                'label' => 'Auto-Sondertilgung',
+                'formula' => 'Jahresend-Sondertilgung aus gewählter Überschussquelle, gedeckelt auf Restschuld des Zielkredits',
+                'values' => $this->autoSpecialRepaymentModeLabel($scenario->settings->autoSpecialRepaymentMode).', Ziel: höchster Sollzins',
+                'result' => $autoSpecialRepaymentTotal,
+            ];
+        }
+
         array_push($rows, ...$this->saleAndNetWorthBreakdownRows($scenario, $purchasePrice, $yearlyRows, $metrics));
         array_push($rows, ...$this->equityBreakdownRows($scenario, $metrics));
 
@@ -751,14 +852,69 @@ final class InvestmentCalculator
         ];
         $rows[] = [
             'group' => 'Kennzahlen',
+            'label' => 'NPV',
+            'formula' => 'Σ CF_t / (1 + Diskontsatz)^t',
+            'values' => 'Summe aus Jahresübersicht mit Diskontsatz '.$this->percent($scenario->settings->discountRate),
+            'result' => $metrics['npv'],
+        ];
+        $rows[] = [
+            'group' => 'Kennzahlen',
             'label' => 'Barwert-Hebel',
             'formula' => 'NPV / Anfangsschuld',
             'values' => $metrics['npv'].' / '.$initialDebt,
             'result' => $metrics['npvLeverageEfficiency'],
             'format' => 'percent',
         ];
+        $rows[] = [
+            'group' => 'Kennzahlen',
+            'label' => 'FV konservativ',
+            'formula' => 'Σ CF_t × (1 + Diskontsatz)^(T - t)',
+            'values' => 'Summe aus Jahresübersicht mit Diskontsatz '.$this->percent($scenario->settings->discountRate),
+            'result' => $metrics['futureValueConservative'],
+        ];
+        $rows[] = [
+            'group' => 'Kennzahlen',
+            'label' => 'FV-Hebel konservativ',
+            'formula' => 'FV konservativ / Anfangsschuld',
+            'values' => $metrics['futureValueConservative'].' / '.$initialDebt,
+            'result' => $metrics['fvLeverageConservative'],
+            'format' => 'percent',
+        ];
+        $rows[] = [
+            'group' => 'Kennzahlen',
+            'label' => 'FV liquiditätsorientiert',
+            'formula' => 'Σ positive CF_t × (1 + Diskontsatz)^(T - t) + Σ negative CF_t',
+            'values' => 'positive Cashflows aufgezinst, negative Cashflows nominal',
+            'result' => $metrics['futureValueLiquidity'],
+        ];
+        $rows[] = [
+            'group' => 'Kennzahlen',
+            'label' => 'FV-Hebel liquiditätsorientiert',
+            'formula' => 'FV liquiditätsorientiert / Anfangsschuld',
+            'values' => $metrics['futureValueLiquidity'].' / '.$initialDebt,
+            'result' => $metrics['fvLeverageLiquidity'],
+            'format' => 'percent',
+        ];
+        if($firstOperatingRow) {
+            $rows[] = [
+                'group' => 'Kennzahlen',
+                'label' => 'DSCR',
+                'formula' => 'Reinertrag / Kapitaldienst',
+                'values' => $firstOperatingRow->operatingCashflow.' / '.$firstOperatingRow->annuity,
+                'result' => $firstOperatingRow->dscr,
+                'format' => 'decimal',
+            ];
+            $rows[] = [
+                'group' => 'Kennzahlen',
+                'label' => 'Debt Yield',
+                'formula' => 'Reinertrag / Anfangsschuld',
+                'values' => $firstOperatingRow->operatingCashflow.' / '.$initialDebt,
+                'result' => $firstOperatingRow->debtYield,
+                'format' => 'percent',
+            ];
+        }
 
-        return $rows;
+        return $this->enrichCalculationBreakdownRows($rows);
     }
 
     /**
@@ -900,6 +1056,57 @@ final class InvestmentCalculator
         ];
     }
 
+    private function enrichCalculationBreakdownRows(array $rows): array
+    {
+        return array_map(function(array $row): array {
+            $key = $row['key'] ?? $this->calculationBreakdownKey((string)($row['label'] ?? ''));
+            $row['key'] = $key;
+            $row['description'] ??= $this->calculationBreakdownDescription($key);
+            return $row;
+        }, $rows);
+    }
+
+    private function calculationBreakdownKey(string $label): string
+    {
+        $key = strtolower(strtr($label, [
+            'ä' => 'ae',
+            'ö' => 'oe',
+            'ü' => 'ue',
+            'Ä' => 'ae',
+            'Ö' => 'oe',
+            'Ü' => 'ue',
+            'ß' => 'ss',
+            '§' => 'paragraf',
+        ]));
+        $key = (string)preg_replace('/[^a-z0-9]+/', '-', $key);
+        $key = trim((string)preg_replace('/-+/', '-', $key), '-');
+        return $key !== '' ? 'calc-'.$key : 'calc-rechenweg';
+    }
+
+    private function calculationBreakdownDescription(string $key): string
+    {
+        return [
+            'calc-gesamtkaufpreis' => 'Zeigt, welche Kaufpreisbestandteile in den Immobilienkauf eingehen.',
+            'calc-gesamtkosten' => 'Zeigt den gesamten modellierten Aufwand aus Kaufpreis, Nebenkosten, Finanzierungskosten und Bauzeitzinsen.',
+            'calc-netto-vermoegenseffekt' => 'Zeigt das nominal entstandene Vermögen bis zum Verkaufsjahr ohne Zeitwertkorrektur.',
+            'calc-hebel-effizienz' => 'Zeigt, wie viel nominaler Nettoeffekt pro Euro Anfangsschuld entsteht.',
+            'calc-npv' => 'Zeigt den heutigen Wert aller zukünftigen Cashflows nach Abzinsung mit dem Diskontsatz.',
+            'calc-barwert-hebel' => 'Zeigt den abgezinsten Wertbeitrag im Verhältnis zur Anfangsschuld.',
+            'calc-fv-konservativ' => 'Zeigt den Endwert im Verkaufsjahr, wenn positive und negative Cashflows mit Opportunitätskosten bewertet werden.',
+            'calc-fv-hebel-konservativ' => 'Zeigt den konservativen Future Value im Verhältnis zur Anfangsschuld.',
+            'calc-fv-liquiditaetsorientiert' => 'Zeigt den Endwert, wenn positive Cashflows aufgezinst und negative Cashflows nur nominal angesetzt werden.',
+            'calc-fv-hebel-liquiditaetsorientiert' => 'Zeigt den liquiditätsorientierten Future Value im Verhältnis zur Anfangsschuld.',
+            'calc-auto-sondertilgung' => 'Zeigt, wie viel freie oder hypothetisch verzinste Liquidität automatisch zur Restschuldreduzierung genutzt wird.',
+            'calc-dscr' => 'Zeigt, ob der operative Reinertrag den jährlichen Kapitaldienst deckt.',
+            'calc-debt-yield' => 'Zeigt den operativen Reinertrag im Verhältnis zur Anfangsschuld.',
+            'calc-netto-endvermoegen' => 'Zeigt die Summe positiver Rückflüsse inklusive Verkaufserlös vor Abzug des eingesetzten Eigenkapitals.',
+            'calc-netto-vermoegensgewinn-nach-ek' => 'Zeigt den nominalen Vermögensgewinn nach Rückzahlung des eingesetzten Eigenkapitals.',
+            'calc-ek-multiple' => 'Zeigt, wie oft das eingesetzte Eigenkapital nominal zurückfließt.',
+            'calc-ek-rendite-gesamt' => 'Zeigt den nominalen Gewinn im Verhältnis zum insgesamt eingesetzten Eigenkapital.',
+            'calc-annualisierte-ek-rendite' => 'Zeigt die auf die Haltedauer geglättete jährliche Eigenkapitalrendite.',
+        ][$key] ?? 'Erklärt diesen Zwischenschritt der Jahres- oder Kennzahlenberechnung.';
+    }
+
     private function taxBreakdownRows(RealEstateInvestmentScenario $scenario, YearlyCalculationResult $row): array
     {
         $yearIndex = max($row->year - $scenario->property->purchaseYear, 0);
@@ -1030,7 +1237,7 @@ final class InvestmentCalculator
             ? max($special7b['assessmentBasis'], 0) * $scenario->depreciation->special7bRate
             : 0.0;
         $furniture = $scenario->depreciation->furnitureBasis * $scenario->depreciation->furnitureRate * $months / 12;
-        $parking = $this->parkingDepreciationForMonths($scenario->depreciation->parkingDepreciationItems, $months);
+        $parking = $this->parkingDepreciationForYear($scenario->depreciation->parkingDepreciationItems, $year, $months, $scenario->property->saleYear, $scenario->property->saleMonth);
         $total = min($buildingDepreciation + $special, $buildingBasis) + $furniture + $parking;
 
         return [
@@ -1066,7 +1273,7 @@ final class InvestmentCalculator
                 'group' => 'AfA',
                 'label' => 'AfA Stellplatz '.$year,
                 'formula' => 'Σ Stellplatz-AfA-Basis × jeweiliger AfA-Satz × AfA-Monate / 12',
-                'values' => $this->parkingDepreciationValues($scenario->depreciation->parkingDepreciationItems, $months),
+                'values' => $this->parkingDepreciationValues($scenario->depreciation->parkingDepreciationItems, $year, $months, $scenario->property->saleYear, $scenario->property->saleMonth),
                 'result' => $parking,
             ],
             [
@@ -1079,22 +1286,37 @@ final class InvestmentCalculator
         ];
     }
 
-    private function parkingDepreciationForMonths(array $items, int $months): float
+    private function parkingDepreciationForYear(array $items, int $year, int $fallbackMonths, int $endYear, int $saleMonth): float
     {
         $total = 0.0;
         foreach($items as $item) {
+            $months = $this->activeMonths(
+                $year,
+                (int)($item['startYear'] ?? 0) ?: $year,
+                (int)($item['startMonth'] ?? 0) ?: 1,
+                $endYear,
+                $saleMonth,
+            );
+            if(!isset($item['startYear'], $item['startMonth'])) {
+                $months = $fallbackMonths;
+            }
             $total += max((float)($item['basis'] ?? 0), 0) * max((float)($item['rate'] ?? 0), 0) * $months / 12;
         }
         return $total;
     }
 
-    private function parkingDepreciationValues(array $items, int $months): string
+    private function parkingDepreciationValues(array $items, int $year, int $fallbackMonths, int $endYear, int $saleMonth): string
     {
         if($items === []) {
             return 'keine Stellplatz-AfA-Basis';
         }
 
-        return implode(' + ', array_map(fn(array $item): string => ($item['label'] ?? 'Stellplatz').': '.((float)($item['basis'] ?? 0)).' × '.$this->percent((float)($item['rate'] ?? 0)).' × '.$months.' / 12', $items));
+        return implode(' + ', array_map(function(array $item) use ($year, $fallbackMonths, $endYear, $saleMonth): string {
+            $months = isset($item['startYear'], $item['startMonth'])
+                ? $this->activeMonths($year, (int)$item['startYear'], (int)$item['startMonth'], $endYear, $saleMonth)
+                : $fallbackMonths;
+            return ($item['label'] ?? 'Stellplatz').': '.((float)($item['basis'] ?? 0)).' × '.$this->percent((float)($item['rate'] ?? 0)).' × '.$months.' / 12';
+        }, $items));
     }
 
     private function percent(float $rate): string

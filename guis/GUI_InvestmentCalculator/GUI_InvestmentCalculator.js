@@ -24,6 +24,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.realEstateTransferTaxPercent',
             'acquisitionCosts.notaryPercent',
             'acquisitionCosts.landRegisterPurchasePercent',
+            'acquisitionCosts.notaryLandRegisterTaxTreatment',
             'acquisitionCosts.brokerPercent',
             'acquisitionCosts.otherAcquisitionCosts',
             'depreciation.buildingBasis',
@@ -89,7 +90,7 @@ class GUI_InvestmentCalculator extends GUI_Module
                 {title: 'Annuität', field: 'annuity', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Restschuld', field: 'remainingDebt', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: (values, data) => this.lastValue(data, 'remainingDebt'), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Bauzeitzinsen brutto', field: 'constructionInterest', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
-                {title: 'BZZ/Kreditkosten WK', field: 'deductibleExpenses', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'BZZ/Kreditkosten/Erwerbs-WK', field: 'deductibleExpenses', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Werbungskosten ohne AfA', field: 'advertisingCostsWithoutDepreciation', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'AfA degressiv', field: 'depreciationDegressive', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'AfA linear', field: 'depreciationLinear', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
@@ -112,10 +113,14 @@ class GUI_InvestmentCalculator extends GUI_Module
                 {title: 'Steuerwirkung', field: 'taxEffect', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'eff. Steuerwirkung %', field: 'effectiveTaxRate', hozAlign: 'right', formatter: cell => this.pct(cell.getValue())},
                 {title: 'CF vor Steuer', field: 'netCashflowBeforeTax', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'CF nach Steuer vor Auto-ST', field: 'netCashflowAfterTaxBeforeAutoSpecialRepayment', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'Auto-Sondertilgung', field: 'autoSpecialRepayment', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'Auto-ST Zielkredit', field: 'autoSpecialRepaymentTarget', minWidth: 180},
                 {title: 'CF nach Steuer', field: 'netCashflowAfterTax', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Verkaufspreis', field: 'salePrice', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Erlös nach Schuld', field: 'saleProceedsAfterDebt', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'CF inkl. Verkauf', field: 'netCashflowIncludingSale', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'Opportunitätszins', field: 'opportunityInterest', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue()), headerTooltip: 'Zins-/Opportunitätseffekt dieses Jahres-Cashflows bis zum Verkaufsjahr mit dem gewählten Diskontsatz.'},
             ],
         });
 
@@ -332,6 +337,8 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     addParkingRow(data = {})
     {
+        const defaultStartYear = Number(this.value('property.completionYear') || this.value('property.purchaseYear') || 0);
+        const defaultStartMonth = Number(this.value('property.completionMonth') || this.value('property.purchaseMonth') || 1);
         const row = this.row('parking', [
             ['label', 'Bezeichnung', 'text', data.label || 'Stellplatz'],
             ['purchasePrice', 'Kaufpreis', 'number', data.purchasePrice || 0],
@@ -344,6 +351,8 @@ class GUI_InvestmentCalculator extends GUI_Module
                 ['custom', 'Außenstellplatz eigener Satz'],
             ]],
             ['depreciationRatePercent', 'AfA %', 'number', data.depreciationRatePercent ?? 5.26],
+            ['depreciationStartYear', 'AfA Startjahr', 'number', data.depreciationStartYear || defaultStartYear],
+            ['depreciationStartMonth', 'AfA Startmonat', 'number', data.depreciationStartMonth || defaultStartMonth],
             ['includedInPurchasePrice', 'im Kaufpreis', 'checkbox', data.includedInPurchasePrice ?? true],
         ]);
         this.parkingList.append(row);
@@ -512,6 +521,9 @@ class GUI_InvestmentCalculator extends GUI_Module
         }
         if(type === 'loan') {
             return ['startYear', 'startMonth', 'interestOnlyYears', 'fixedInterestYears', 'specialRepaymentYear', 'specialRepaymentMonth', 'grantYear', 'grantMonth'].includes(field);
+        }
+        if(type === 'parking') {
+            return ['depreciationStartYear', 'depreciationStartMonth'].includes(field);
         }
         return false;
     }
@@ -706,22 +718,23 @@ class GUI_InvestmentCalculator extends GUI_Module
             if(unit.includedInPurchasePrice) {
                 const price = Number(unit.purchasePrice || 0);
                 parkingTotal += price;
-                landCosts += price * Number(unit.landSharePercent || 0) / 100;
-                buildingCosts += price * Number(unit.buildingSharePercent || 0) / 100;
             }
         });
 
         const realEstatePurchasePrice = Math.max(apartment + other + parkingTotal, 0);
+        const notaryRate = this.value('acquisitionCosts.notaryLandRegisterTaxTreatment') === 'immediate_deductible'
+            ? 0
+            : Number(this.value('acquisitionCosts.notaryPercent') || 0) + Number(this.value('acquisitionCosts.landRegisterPurchasePercent') || 0);
         const acquisitionCosts = realEstatePurchasePrice * (
             Number(this.value('acquisitionCosts.realEstateTransferTaxPercent') || 0)
-            + Number(this.value('acquisitionCosts.notaryPercent') || 0)
-            + Number(this.value('acquisitionCosts.landRegisterPurchasePercent') || 0)
+            + notaryRate
             + Number(this.value('acquisitionCosts.brokerPercent') || 0)
         ) / 100 + Number(this.value('acquisitionCosts.otherAcquisitionCosts') || 0);
         const realEstateBase = landCosts + buildingCosts;
         const buildingRatio = realEstateBase > 0 ? buildingCosts / realEstateBase : 0;
+        const propertyShare = realEstatePurchasePrice > 0 ? (apartment + other) / realEstatePurchasePrice : 0;
 
-        return buildingCosts + acquisitionCosts * buildingRatio;
+        return buildingCosts + acquisitionCosts * propertyShare * buildingRatio;
     }
 
     setRuleDefault(path, value, force)
@@ -1080,6 +1093,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.landRegisterPurchasePercent': 0.5,
             'acquisitionCosts.landRegisterLienPercent': 0.5,
             'acquisitionCosts.financingCostsDeductible': true,
+            'acquisitionCosts.notaryLandRegisterTaxTreatment': 'afa_basis',
             'depreciation.startYear': 2026,
             'depreciation.startMonth': 1,
             'depreciation.degressiveRatePercent': 5,
@@ -1102,6 +1116,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'sale.taxFreeSale': true,
             'settings.discountRatePercent': 5,
             'settings.initialEquityAmount': 0,
+            'settings.autoSpecialRepaymentMode': 'none',
         };
     }
 
@@ -1220,45 +1235,49 @@ class GUI_InvestmentCalculator extends GUI_Module
     renderSummary(summary, scales)
     {
         const cards = [
-            ['Kaufpreis', this.eur(summary.purchasePrice)],
-            ['Gesamtkosten', this.eur(summary.totalCosts)],
-            ['Anfangsschuld', this.eur(summary.initialDebt)],
-            ['monatliche Miete', this.eur(summary.monthlyRent)],
-            ['Bruttorendite', this.pct(summary.grossYield)],
-            ['Nettorendite', this.pct(summary.netYield)],
-            ['CF vor Steuer', this.eur(summary.firstFullYearNetCashflowBeforeTax)],
-            ['CF nach Steuer', this.eur(summary.firstFullYearNetCashflowAfterTax)],
-            ['Netto-Vermögenseffekt', this.eur(summary.netWorthEffect)],
-            ['Hebel-/Effizienz', this.pct(summary.leverageEfficiency), scales.leverageEfficiency],
-            ['NPV', this.eur(summary.npv)],
-            ['Barwert-Hebel', this.pct(summary.npvLeverageEfficiency), scales.npvLeverageEfficiency],
-            ['FV konservativ', this.eur(summary.futureValueConservative)],
-            ['FV-Hebel konservativ', this.pct(summary.fvLeverageConservative), scales.fvLeverageConservative],
-            ['FV liquiditätsorientiert', this.eur(summary.futureValueLiquidity)],
-            ['FV-Hebel liquiditätsorientiert', this.pct(summary.fvLeverageLiquidity), scales.fvLeverageLiquidity],
-            ['DSCR', this.dec(summary.dscr, 2), scales.dscr],
-            ['Debt Yield', this.pct(summary.debtYield), scales.debtYield],
+            {label: 'Kaufpreis', value: this.eur(summary.purchasePrice), calcKey: 'calc-gesamtkaufpreis'},
+            {label: 'Gesamtkosten', value: this.eur(summary.totalCosts), calcKey: 'calc-gesamtkosten'},
+            {label: 'Anfangsschuld', value: this.eur(summary.initialDebt)},
+            {label: 'monatliche Miete', value: this.eur(summary.monthlyRent)},
+            {label: 'Bruttorendite', value: this.pct(summary.grossYield)},
+            {label: 'Nettorendite', value: this.pct(summary.netYield)},
+            {label: 'CF vor Steuer', value: this.eur(summary.firstFullYearNetCashflowBeforeTax)},
+            {label: 'CF nach Steuer', value: this.eur(summary.firstFullYearNetCashflowAfterTax)},
+            {label: 'Netto-Vermögenseffekt', value: this.eur(summary.netWorthEffect), calcKey: 'calc-netto-vermoegenseffekt'},
+            {label: 'Hebel-/Effizienz', value: this.pct(summary.leverageEfficiency), scale: scales.leverageEfficiency, calcKey: 'calc-hebel-effizienz'},
+            {label: 'NPV', value: this.eur(summary.npv), calcKey: 'calc-npv'},
+            {label: 'Barwert-Hebel', value: this.pct(summary.npvLeverageEfficiency), scale: scales.npvLeverageEfficiency, calcKey: 'calc-barwert-hebel'},
+            {label: 'FV konservativ', value: this.eur(summary.futureValueConservative), calcKey: 'calc-fv-konservativ'},
+            {label: 'FV-Hebel konservativ', value: this.pct(summary.fvLeverageConservative), scale: scales.fvLeverageConservative, calcKey: 'calc-fv-hebel-konservativ'},
+            {label: 'FV liquiditätsorientiert', value: this.eur(summary.futureValueLiquidity), calcKey: 'calc-fv-liquiditaetsorientiert'},
+            {label: 'FV-Hebel liquiditätsorientiert', value: this.pct(summary.fvLeverageLiquidity), scale: scales.fvLeverageLiquidity, calcKey: 'calc-fv-hebel-liquiditaetsorientiert'},
+            {label: 'DSCR', value: this.dec(summary.dscr, 2), scale: scales.dscr, calcKey: 'calc-dscr'},
+            {label: 'Debt Yield', value: this.pct(summary.debtYield), scale: scales.debtYield, calcKey: 'calc-debt-yield'},
         ];
         if(Number(summary.totalEquityInvested || 0) > 0) {
             cards.push(
-                ['Anfangs-Eigenkapital', this.eur(summary.initialEquityAmount)],
-                ['nicht finanzierte BZZ', this.eur(summary.constructionInterestCashTotal)],
-                ['Kapitalnachschüsse', this.eur(summary.equityCapitalCalls)],
-                ['eingesetztes EK', this.eur(summary.totalEquityInvested)],
-                ['Netto-Endvermögen', this.eur(summary.equityDistributions)],
-                ['Vermögensgewinn nach EK', this.eur(summary.equityNetGain)],
-                ['EK-Multiple', `${this.dec(summary.equityMultiple, 2)}x`],
-                ['EK-Rendite gesamt', this.pct(summary.equityTotalReturn)],
-                ['EK-Rendite p.a.', this.pct(summary.equityAnnualizedReturn)],
+                {label: 'Anfangs-Eigenkapital', value: this.eur(summary.initialEquityAmount), calcKey: 'calc-anfangs-eigenkapital'},
+                {label: 'nicht finanzierte BZZ', value: this.eur(summary.constructionInterestCashTotal)},
+                {label: 'Kapitalnachschüsse', value: this.eur(summary.equityCapitalCalls), calcKey: 'calc-kapitalnachschuesse'},
+                {label: 'eingesetztes EK', value: this.eur(summary.totalEquityInvested), calcKey: 'calc-eingesetztes-eigenkapital'},
+                {label: 'Netto-Endvermögen', value: this.eur(summary.equityDistributions), calcKey: 'calc-netto-endvermoegen'},
+                {label: 'Vermögensgewinn nach EK', value: this.eur(summary.equityNetGain), calcKey: 'calc-netto-vermoegensgewinn-nach-ek'},
+                {label: 'EK-Multiple', value: `${this.dec(summary.equityMultiple, 2)}x`, calcKey: 'calc-ek-multiple'},
+                {label: 'EK-Rendite gesamt', value: this.pct(summary.equityTotalReturn), calcKey: 'calc-ek-rendite-gesamt'},
+                {label: 'EK-Rendite p.a.', value: this.pct(summary.equityAnnualizedReturn), calcKey: 'calc-annualisierte-ek-rendite'},
             );
         }
-        this.summary.innerHTML = cards.map(([label, value, scale]) => `
+        this.summary.innerHTML = cards.map(card => `
             <article class="rei-card">
-                <span>${this.escape(label)}</span>
-                <strong>${value || '0'}</strong>
-                ${scale ? `<em class="badge text-bg-${this.escape(scale.variant)}">${this.escape(scale.label)}</em>` : ''}
+                <span>${this.escape(card.label)}</span>
+                ${card.calcKey ? `<button class="rei-card-link" type="button" data-calc-target="${this.escape(card.calcKey)}" title="Rechenweg anzeigen" aria-label="Rechenweg ${this.escape(card.label)} anzeigen"><i class="bi bi-bookmark" aria-hidden="true"></i></button>` : ''}
+                <strong>${card.value || '0'}</strong>
+                ${card.scale ? `<em class="badge text-bg-${this.escape(card.scale.variant)}">${this.escape(card.scale.label)}</em>` : ''}
             </article>
         `).join('');
+        this.summary.querySelectorAll('[data-calc-target]').forEach(button => {
+            button.addEventListener('click', () => this.scrollToCalculationBreakdown(button.dataset.calcTarget));
+        });
     }
 
     renderSidebarCostBreakdown(summary)
@@ -1296,6 +1315,8 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['Makler', values.broker],
             ['sonstige Erwerbsnebenkosten', values.otherAcquisitionCosts],
             ['Zwischensumme Erwerbsnebenkosten', values.acquisitionCostsWithoutFinancing, true],
+            ['davon sofortige Erwerbs-WK', values.immediateDeductibleAcquisitionCosts],
+            ['davon AfA-relevante Erwerbsnebenkosten', values.depreciationRelevantAcquisitionCostsWithoutFinancing],
         ];
         this.acquisitionBreakdown.innerHTML = this.renderBreakdownRows(rows);
     }
@@ -1375,16 +1396,28 @@ class GUI_InvestmentCalculator extends GUI_Module
     renderCalculationBreakdown(rows)
     {
         this.calculationBreakdown.innerHTML = rows.map(row => `
-            <article class="rei-calc-row">
+            <article class="rei-calc-row" id="${this.escape(row.key || '')}">
                 <div>
                     <span>${this.escape(row.group || '')}</span>
                     <strong>${this.escape(row.label || '')}${this.renderSourceLink(row.source)}</strong>
+                    <p>${this.escape(row.description || '')}</p>
                     <code>${this.escape(row.formula || '')}</code>
                     <em>${this.escape(row.values || '')}</em>
                 </div>
                 <b>${this.formatBreakdownResult(row)}</b>
             </article>
         `).join('');
+    }
+
+    scrollToCalculationBreakdown(key)
+    {
+        const row = key ? document.getElementById(key) : null;
+        if(!row) {
+            return;
+        }
+        row.scrollIntoView({behavior: 'smooth', block: 'start'});
+        row.classList.add('rei-calc-row--highlight');
+        window.setTimeout(() => row.classList.remove('rei-calc-row--highlight'), 1500);
     }
 
     formatBreakdownResult(row)

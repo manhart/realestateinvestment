@@ -31,6 +31,16 @@ final class TaxCalculatorTest extends TestCase
         self::assertEqualsWithDelta(29501.18, $result['taxBefore'], 0.01);
     }
 
+    public function testSection32aUses2025SplittingTariff(): void
+    {
+        $tax = new TaxInput(94410, TaxInput::CALCULATION_METHOD_SECTION_32A, 'splitting', false, 'BY', false, false, 0.42, true, 2025);
+        $result = (new TaxCalculator())->calculate($tax, 0);
+
+        self::assertEqualsWithDelta(19426, $result['tariffIncomeTaxBefore'], 0.01);
+        self::assertEqualsWithDelta(0, $result['solidaritySurchargeBefore'], 0.01);
+        self::assertEqualsWithDelta(19426, $result['taxBefore'], 0.01);
+    }
+
     public function testSection32aSplittingUsesTwiceHalfIncomeTax(): void
     {
         $tax = new TaxInput(94439, TaxInput::CALCULATION_METHOD_SECTION_32A, 'splitting', false, 'BY', false, false, 0.42, true, 2026);

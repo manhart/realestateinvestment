@@ -16,6 +16,9 @@ final class ParkingUnitInput
         public bool $depreciable,
         public string $depreciationMode,
         public float $depreciationRate,
+        public float $depreciationBasis,
+        public int $depreciationStartYear,
+        public int $depreciationStartMonth,
         public bool $includedInPurchasePrice,
     ) {}
 
@@ -24,6 +27,10 @@ final class ParkingUnitInput
         $depreciationMode = InputReader::string($data, 'depreciationMode', 'building');
         if(!in_array($depreciationMode, ['building', 'custom'], true)) {
             $depreciationMode = 'building';
+        }
+        $depreciationStartMonth = InputReader::int($data, 'depreciationStartMonth');
+        if($depreciationStartMonth < 1 || $depreciationStartMonth > 12) {
+            $depreciationStartMonth = 0;
         }
 
         return new self(
@@ -35,6 +42,9 @@ final class ParkingUnitInput
             InputReader::bool($data, 'depreciable', true),
             $depreciationMode,
             InputReader::rate($data, 'depreciationRatePercent'),
+            InputReader::float($data, 'depreciationBasis'),
+            InputReader::int($data, 'depreciationStartYear'),
+            $depreciationStartMonth,
             InputReader::bool($data, 'includedInPurchasePrice', true),
         );
     }

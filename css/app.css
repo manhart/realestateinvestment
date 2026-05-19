@@ -126,11 +126,13 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    position: relative;
 }
 
 .rei-card span {
     color: #637083;
     font-size: 0.76rem;
+    padding-right: 20px;
 }
 
 .rei-card strong {
@@ -144,6 +146,38 @@ body {
     font-style: normal;
     white-space: normal;
     text-align: left;
+}
+
+.rei-card-link {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
+.rei-card-link:hover,
+.rei-card-link:focus {
+    background: #eef2f7;
+    color: #1d4ed8;
+}
+
+.rei-card-link .bi {
+    display: inline-block;
+}
+
+.rei-card-link .bi::before {
+    vertical-align: -0.08em;
 }
 
 .rei-layout {
@@ -509,6 +543,14 @@ body {
     background: #f8fafc;
     border: 1px solid #dfe4ea;
     border-radius: 8px;
+    scroll-margin-top: 14px;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rei-calc-row--highlight {
+    background: #eef6ff;
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .rei-calc-row div {
@@ -524,6 +566,12 @@ body {
 
 .rei-calc-row strong {
     font-size: 0.98rem;
+}
+
+.rei-calc-row p {
+    margin: 0;
+    color: #334155;
+    font-size: 0.84rem;
 }
 
 .rei-source-link {

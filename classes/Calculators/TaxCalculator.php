@@ -110,24 +110,38 @@ final class TaxCalculator
      */
     private function section32aParams(int $taxYear): array
     {
-        if($taxYear !== 2026)
-            $taxYear = 2026;
-
         return [
-            'basicAllowance' => 12348,
-            'zone1Limit' => 17799,
-            'zone2Limit' => 69878,
-            'topRateLimit' => 277825,
-            'zone1A' => 914.51,
-            'zone1B' => 1400,
-            'zone2A' => 173.10,
-            'zone2B' => 2397,
-            'zone2C' => 1034.87,
-            'topRate' => 0.42,
-            'topRateOffset' => 11135.63,
-            'richRate' => 0.45,
-            'richRateOffset' => 19470.38,
-        ];
+            2025 => [
+                'basicAllowance' => 12096,
+                'zone1Limit' => 17443,
+                'zone2Limit' => 68480,
+                'topRateLimit' => 277825,
+                'zone1A' => 932.30,
+                'zone1B' => 1400,
+                'zone2A' => 176.64,
+                'zone2B' => 2397,
+                'zone2C' => 1015.13,
+                'topRate' => 0.42,
+                'topRateOffset' => 10911.92,
+                'richRate' => 0.45,
+                'richRateOffset' => 19246.67,
+            ],
+            2026 => [
+                'basicAllowance' => 12348,
+                'zone1Limit' => 17799,
+                'zone2Limit' => 69878,
+                'topRateLimit' => 277825,
+                'zone1A' => 914.51,
+                'zone1B' => 1400,
+                'zone2A' => 173.10,
+                'zone2B' => 2397,
+                'zone2C' => 1034.87,
+                'topRate' => 0.42,
+                'topRateOffset' => 11135.63,
+                'richRate' => 0.45,
+                'richRateOffset' => 19470.38,
+            ],
+        ][$taxYear] ?? $this->section32aParams(2026);
     }
 
     private function solidaritySurcharge(float $incomeTax, string $assessmentType, int $taxYear): float
@@ -141,10 +155,12 @@ final class TaxCalculator
 
     private function solidarityFreeLimit(string $assessmentType, int $taxYear): float
     {
-        if($taxYear !== 2026)
-            $taxYear = 2026;
+        $singleLimit = [
+            2025 => 19950.0,
+            2026 => 20350.0,
+        ][$taxYear] ?? 20350.0;
 
-        return $assessmentType === 'splitting' ? 40700.0 : 20350.0;
+        return $assessmentType === 'splitting' ? $singleLimit * 2 : $singleLimit;
     }
 
     private function churchTaxRate(string $state): float
