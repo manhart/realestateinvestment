@@ -9,6 +9,8 @@ final class SaleInput
 {
     public function __construct(
         public float $annualValueIncrease,
+        public float $parkingAnnualValueIncrease,
+        public bool $includeParkingInSalePrice,
         public float $sellingCostsRate,
         public float $sellingCostsAmount,
         public float $prepaymentPenaltyAmount,
@@ -19,8 +21,15 @@ final class SaleInput
 
     public static function fromArray(array $data): self
     {
+        $annualValueIncreasePercent = InputReader::float($data, 'annualValueIncreasePercent', 2);
+        $parkingAnnualValueIncreasePercent = array_key_exists('parkingAnnualValueIncreasePercent', $data)
+            ? InputReader::float($data, 'parkingAnnualValueIncreasePercent', $annualValueIncreasePercent)
+            : $annualValueIncreasePercent;
+
         return new self(
-            InputReader::rate($data, 'annualValueIncreasePercent', 2),
+            $annualValueIncreasePercent / 100,
+            $parkingAnnualValueIncreasePercent / 100,
+            InputReader::bool($data, 'includeParkingInSalePrice', true),
             InputReader::rate($data, 'sellingCostsPercent'),
             InputReader::float($data, 'sellingCostsAmount'),
             InputReader::float($data, 'prepaymentPenaltyAmount'),

@@ -14,22 +14,33 @@ final class DepreciationCalculator
     {
         $basis = max($input->buildingBasis, 0);
         $bookValue = $basis;
+        $special7bCarry = 0.0;
         $results = [];
 
         for($year = $startYear; $year <= $endYear; $year++) {
             $months = $this->activeMonths($year, $input->startYear, $input->startMonth, $endYear, $saleMonth);
+            $special7bActive = $this->isSpecial7bActive($input, $year);
+            if(!$input->special7bReducesBookValueImmediately && !$special7bActive && $special7bCarry > 0.0) {
+                $bookValue = max($bookValue - $special7bCarry, 0);
+                $special7bCarry = 0.0;
+            }
+
             $linear = $basis * $input->linearRate * $months / 12;
             $degressive = $input->degressiveActive ? $bookValue * $input->degressiveRate * $months / 12 : 0.0;
             $baseDepreciation = $input->degressiveActive && $input->autoSwitchToLinear ? max($degressive, $linear) : ($input->degressiveActive ? $degressive : $linear);
             $specialBasis = max($input->special7bBasis, 0);
-            $special7b = $input->special7bActive && $year >= $input->startYear && ($year - $input->startYear) < $input->special7bYears
-                ? $specialBasis * $input->special7bRate
-                : 0.0;
+            $regularDepreciation = min($baseDepreciation, $bookValue);
+            $special7bCapacity = max($bookValue - $special7bCarry - $regularDepreciation, 0);
+            $special7b = $special7bActive ? min($specialBasis * $input->special7bRate, $special7bCapacity) : 0.0;
             $furniture = $input->furnitureBasis * $input->furnitureRate * $months / 12;
             $parking = $this->parkingDepreciation($input, $year, $months, $endYear, $saleMonth);
-            $total = min($baseDepreciation + $special7b, $bookValue) + $furniture + $parking;
+            $total = $regularDepreciation + $special7b + $furniture + $parking;
 
-            $bookValue = max($bookValue - min($baseDepreciation + $special7b, $bookValue), 0);
+            $bookValueReduction = $regularDepreciation + ($input->special7bReducesBookValueImmediately ? $special7b : 0.0);
+            $bookValue = max($bookValue - $bookValueReduction, 0);
+            if($special7bActive && !$input->special7bReducesBookValueImmediately) {
+                $special7bCarry += $special7b;
+            }
             $results[$year] = [
                 'degressive' => $degressive,
                 'linear' => $linear,
@@ -41,6 +52,13 @@ final class DepreciationCalculator
         }
 
         return $results;
+    }
+
+    private function isSpecial7bActive(DepreciationInput $input, int $year): bool
+    {
+        return $input->special7bActive
+            && $year >= $input->startYear
+            && ($year - $input->startYear) < $input->special7bYears;
     }
 
     private function parkingDepreciation(DepreciationInput $input, int $year, int $fallbackMonths, int $endYear, int $saleMonth): float

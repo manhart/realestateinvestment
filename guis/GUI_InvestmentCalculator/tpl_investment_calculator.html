@@ -210,18 +210,14 @@
                 <div class="rei-section-body">
                 <div class="row g-2 mb-2">
                     <label class="col-md-3">Anfangs-Eigenkapital<input class="form-control" type="number" step="0.01" data-path="settings.initialEquityAmount" value="0"></label>
-                    <label class="col-md-4">Automatische Sondertilgung
-                        <select class="form-select" data-path="settings.autoSpecialRepaymentMode">
-                            <option value="none" selected>deaktiviert</option>
-                            <option value="positive_cashflow_after_tax">positiver CF nach Steuer</option>
-                            <option value="positive_opportunity_interest">positiver Opportunitätszins</option>
-                            <option value="positive_cashflow_plus_opportunity_interest">positiver CF + positiver Opportunitätszins</option>
+                    <div class="col-md-4">
+                        <label class="rei-field-label" for="rei-auto-special-repayment-mode">Verwendung positiver Cashflows
+                            <button class="rei-info-button" type="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-content="Positive Cashflows sind echte Liquidität und können zum Jahresende zur Sondertilgung des aktiven Darlehens mit dem höchsten Sollzins genutzt werden. Opportunitätszins und Future Value bleiben separate Vergleichsrechnungen und sind keine verfügbare Tilgungsliquidität." aria-label="Info zur Verwendung positiver Cashflows"><i class="bi bi-info-circle"></i></button>
+                        </label>
+                        <select id="rei-auto-special-repayment-mode" class="form-select" data-path="settings.autoSpecialRepaymentMode">
+                            <option value="none" selected>nicht automatisch verwenden</option>
+                            <option value="positive_cashflow_after_tax">zur Sondertilgung nutzen</option>
                         </select>
-                    </label>
-                    <div class="col-md-5 rei-equity-note">
-                        <div class="rei-inline-note">
-                            Das Anfangs-Eigenkapital dient als Renditebasis. Auto-Sondertilgung erfolgt zum Jahresende auf den aktiven Kredit mit dem höchsten Sollzins; Opportunitätszins ist eine hypothetische Vergleichsgröße.
-                        </div>
                     </div>
                 </div>
                 <div class="rei-repeater" data-role="loan-list"></div>
@@ -237,12 +233,19 @@
                 <div class="row g-2">
                     <label class="col-md-2">AfA Startjahr<input class="form-control" type="number" step="1" data-integer data-path="depreciation.startYear" value="2026"></label>
                     <label class="col-md-2">AfA Startmonat<input class="form-control" type="number" min="1" max="12" step="1" data-integer data-month data-path="depreciation.startMonth" value="6"></label>
-                    <label class="col-md-2">Gebäude-Basis<input class="form-control" type="number" step="0.01" data-path="depreciation.buildingBasis" value="0"></label>
+                    <div class="col-md-2">
+                        <label class="rei-field-label" for="rei-building-basis">Gebäude-Basis
+                            <button class="rei-info-button" type="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-content="Standardmäßig automatisch aus Kaufpreis, Gebäudeanteil und anteiligen AfA-relevanten Erwerbsnebenkosten berechnet. Stellplätze werden je AfA-Typ separat oder zusätzlich in die Gebäude-AfA einbezogen." aria-label="Info zur Gebäude-Basis"><i class="bi bi-info-circle"></i></button>
+                        </label>
+                        <input id="rei-building-basis" class="form-control" type="number" step="0.01" data-path="depreciation.buildingBasis" data-role="building-basis-input" value="0" readonly>
+                    </div>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.buildingBasisOverrideEnabled" data-role="building-basis-override"> Gebäude-Basis manuell</label>
                     <label class="col-md-2">degressiv %<input class="form-control" type="number" step="0.01" data-path="depreciation.degressiveRatePercent" value="5"></label>
                     <label class="col-md-2">linear %<input class="form-control" type="number" step="0.01" data-path="depreciation.linearRatePercent" value="3"></label>
                     <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.degressiveActive" checked> degressiv</label>
                     <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.autoSwitchToLinear" checked> Wechsel linear</label>
                     <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.special7bActive"> §7b <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/esth/2024/A-Einkommensteuergesetz/II-Einkommen-2-24b/3-Gewinn-4-7i/Paragraf-7b/inhalt.html" target="_blank" rel="noopener" title="EStH § 7b">↗</a></label>
+                    <input type="hidden" data-path="depreciation.special7bReducesBookValueImmediately" value="false">
                     <label class="col-md-2">§7b Bauantrag<input class="form-control" type="date" data-path="depreciation.special7bApplicationDate" value=""></label>
                     <label class="col-md-2">§7b Fläche m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bArea" value="0"></label>
                     <label class="col-md-2">§7b Baukostenlimit €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bConstructionCostLimitPerSqm" value="5200"></label>
@@ -264,6 +267,15 @@
                     <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="tax.churchTax"> Kirchensteuer <a class="rei-source-link" href="https://www.kirchensteuer-wirkt.de/hoehe-kirchensteuer" target="_blank" rel="noopener" title="Kirchensteuer">↗</a></label>
                     <label class="col-md-3">Kirchensteuer-Land<select class="form-select" data-path="tax.churchTaxState"><option value="BY">Bayern (8 %)</option><option value="BW">Baden-Württemberg (8 %)</option><option value="BE">Berlin (9 %)</option><option value="BB">Brandenburg (9 %)</option><option value="HB">Bremen (9 %)</option><option value="HH">Hamburg (9 %)</option><option value="HE">Hessen (9 %)</option><option value="MV">Mecklenburg-Vorpommern (9 %)</option><option value="NI">Niedersachsen (9 %)</option><option value="NW">Nordrhein-Westfalen (9 %)</option><option value="RP">Rheinland-Pfalz (9 %)</option><option value="SL">Saarland (9 %)</option><option value="SN">Sachsen (9 %)</option><option value="ST">Sachsen-Anhalt (9 %)</option><option value="SH">Schleswig-Holstein (9 %)</option><option value="TH">Thüringen (9 %)</option></select></label>
                     <label class="col-md-2">Wertsteigerung %<input class="form-control" type="number" step="0.01" data-path="sale.annualValueIncreasePercent" value="2"></label>
+                    <div class="col-md-2">
+                        <label class="rei-field-label" for="rei-parking-value-increase">Stellplatz-Wertsteigerung %
+                            <button class="rei-info-button" type="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-content="Stellplätze/Garagen können einen eigenen Marktwert haben. Standardmäßig wird derselbe Satz wie beim Objekt verwendet; bei abweichender lokaler Nachfrage kann hier ein eigener Satz eingetragen werden." aria-label="Info zur Stellplatz-Wertsteigerung"><i class="bi bi-info-circle"></i></button>
+                        </label>
+                        <input id="rei-parking-value-increase" class="form-control" type="number" step="0.01" data-path="sale.parkingAnnualValueIncreasePercent" value="2">
+                    </div>
+                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="sale.includeParkingInSalePrice" checked> Stellplätze im Verkaufswert
+                        <button class="rei-info-button" type="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-content="Aktiv: enthaltene Stellplätze/Garagen erhöhen den Verkaufspreis. Inaktiv: Stellplätze bleiben in Kosten, Miete und AfA erhalten, werden aber im Endverkauf nicht bewertet." aria-label="Info zum Stellplatz-Verkaufswert"><i class="bi bi-info-circle"></i></button>
+                    </label>
                     <label class="col-md-2">Verkaufskosten %<input class="form-control" type="number" step="0.01" data-path="sale.sellingCostsPercent" value="1"></label>
                     <label class="col-md-3">Vorfälligkeit<input class="form-control" type="number" step="0.01" data-path="sale.prepaymentPenaltyAmount" value="0"></label>
                     <label class="col-md-2">Diskontsatz %<input class="form-control" type="number" step="0.01" data-path="settings.discountRatePercent" value="5"></label>
@@ -289,7 +301,9 @@
             <div class="rei-breakdown" data-role="financing-breakdown"></div>
             <h2>Gesamtaufwand</h2>
             <div class="rei-breakdown" data-role="total-breakdown"></div>
-            <h2>AfA-Bemessungsgrundlagen</h2>
+            <h2>Verkaufswert</h2>
+            <div class="rei-breakdown" data-role="sale-breakdown"></div>
+            <h2>AfA-Basis</h2>
             <div class="rei-breakdown" data-role="depreciation-basis-breakdown"></div>
         </aside>
     </section>

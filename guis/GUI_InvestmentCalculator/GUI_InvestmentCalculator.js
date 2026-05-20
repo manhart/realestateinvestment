@@ -28,6 +28,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.brokerPercent',
             'acquisitionCosts.otherAcquisitionCosts',
             'depreciation.buildingBasis',
+            'depreciation.buildingBasisOverrideEnabled',
             'depreciation.special7bArea',
             'depreciation.special7bLimitPerSqm',
             'depreciation.special7bActualConstructionCostPerSqm',
@@ -38,6 +39,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.acquisitionBreakdown = this.element('[data-role="acquisition-breakdown"]');
         this.financingBreakdown = this.element('[data-role="financing-breakdown"]');
         this.totalBreakdown = this.element('[data-role="total-breakdown"]');
+        this.saleBreakdown = this.element('[data-role="sale-breakdown"]');
         this.depreciationBasisBreakdown = this.element('[data-role="depreciation-basis-breakdown"]');
         this.calculationBreakdown = this.element('[data-role="calculation-breakdown"]');
         this.scaleLegend = this.element('[data-role="scale-legend"]');
@@ -55,6 +57,7 @@ class GUI_InvestmentCalculator extends GUI_Module
 
         this.initTables();
         this.bindControls();
+        this.initInfoPopovers();
         this.prepareStaticInputs();
         this.initSectionToggles();
         this.resetStaticInputs();
@@ -67,7 +70,9 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.syncSpecial7bDefaults(false);
         }
         this.updateTaxModeState();
+        this.updateBuildingBasisOverrideState();
         this.syncSpecial7bCalculatedCosts();
+        this.syncParkingValueIncreaseDefault(false);
         this.calculate();
         this.refreshScenarioList().then(() => this.importSharedScenarioFromUrl());
     }
@@ -162,7 +167,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         });
         this.element('[data-role="compare"]').addEventListener('click', () => this.compareScenarios());
         this.comparisonToggle.addEventListener('click', () => this.setComparisonCollapsed(!this.comparisonSection.classList.contains('is-collapsed')));
-        this.element('[data-role="add-parking"]').addEventListener('click', () => this.addParkingRow({label: 'Stellplatz', buildingSharePercent: 80, landSharePercent: 20, depreciable: true, includedInPurchasePrice: true}));
+        this.element('[data-role="add-parking"]').addEventListener('click', () => this.addParkingRow({label: 'Stellplatz', buildingSharePercent: 80, landSharePercent: 20, depreciationMode: 'building_basis', includedInPurchasePrice: true}));
         this.element('[data-role="add-construction-interest"]').addEventListener('click', () => this.addConstructionInterestRow({label: 'Bauzeitzinsen', year: Number(this.value('property.purchaseYear') || 2026), deductible: true}));
         this.element('[data-role="add-loan"]').addEventListener('click', () => this.addLoanRow({name: 'Darlehen', startYear: Number(this.value('property.purchaseYear') || 2026), startMonth: Number(this.value('property.purchaseMonth') || 1), fixedInterestYears: 10, constantAnnuity: true, redeemOnSale: true}));
         this.getRootElement().addEventListener('keydown', event => this.preventInvalidIntegerKey(event));
@@ -171,7 +176,9 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('input', event => {
             this.normalizeIntegerInput(event.target, false);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
+            this.syncBuildingBasisFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, false);
+            this.syncParkingValueIncreaseDefaultFromEvent(event.target);
             this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
             this.saveDraft();
@@ -180,12 +187,22 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('change', event => {
             this.normalizeIntegerInput(event.target, true);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
+            this.syncBuildingBasisFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, true);
+            this.syncParkingValueIncreaseDefaultFromEvent(event.target);
             this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
             this.saveDraft();
             this.calculate();
         });
+    }
+
+    initInfoPopovers()
+    {
+        if(!window.bootstrap?.Popover) {
+            return;
+        }
+        this.getRootElement().querySelectorAll('[data-bs-toggle="popover"]').forEach(element => new window.bootstrap.Popover(element));
     }
 
     initWorkspaceKey()
@@ -312,7 +329,7 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     addDefaultRows()
     {
-        this.addParkingRow({label: 'Stellplatz', purchasePrice: 20000, monthlyRent: 80, buildingSharePercent: 80, landSharePercent: 20, depreciable: true, includedInPurchasePrice: true});
+        this.addParkingRow({label: 'Stellplatz', purchasePrice: 20000, monthlyRent: 80, buildingSharePercent: 80, landSharePercent: 20, depreciationMode: 'building_basis', includedInPurchasePrice: true});
         this.addLoanRow({name: 'Bankdarlehen', principal: 310000, interestRatePercent: 4, initialRepaymentPercent: 2, startYear: 2026, startMonth: 1, fixedInterestYears: 10, constantAnnuity: true, redeemOnSale: true});
     }
 
@@ -345,10 +362,10 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['monthlyRent', 'Miete mtl.', 'number', data.monthlyRent || 0],
             ['buildingSharePercent', 'Gebäude %', 'number', data.buildingSharePercent ?? 80],
             ['landSharePercent', 'Grund %', 'number', data.landSharePercent ?? 20],
-            ['depreciable', 'AfA', 'checkbox', data.depreciable ?? true],
-            ['depreciationMode', 'AfA-Typ', 'segment', data.depreciationMode || 'building', [
-                ['building', 'Tiefgarage wie Objekt'],
-                ['custom', 'Außenstellplatz eigener Satz'],
+            ['depreciationMode', 'AfA-Typ', 'segment', data.depreciationMode || 'building_basis', [
+                ['building_basis', 'in Gebäude-Basis'],
+                ['linear_building', 'linearer Gebäudesatz'],
+                ['custom_linear', 'eigener linearer Satz'],
             ]],
             ['depreciationRatePercent', 'AfA %', 'number', data.depreciationRatePercent ?? 5.26],
             ['depreciationStartYear', 'AfA Startjahr', 'number', data.depreciationStartYear || defaultStartYear],
@@ -409,8 +426,12 @@ class GUI_InvestmentCalculator extends GUI_Module
         fields.forEach(([field, label, inputType, value, options]) => {
             const wrapper = document.createElement(inputType === 'segment' ? 'div' : 'label');
             wrapper.textContent = label;
+            wrapper.dataset.field = field;
             if(inputType === 'checkbox') {
                 wrapper.className = 'rei-check-field';
+            }
+            if(type === 'parking' && field === 'depreciationMode') {
+                wrapper.title = 'in Gebäude-Basis: läuft mit der Gebäude-AfA. Linearer Gebäudesatz: separate AfA mit linearem Objektsatz. Eigener linearer Satz: separate AfA mit eigenem Prozentsatz.';
             }
             if(inputType === 'segment') {
                 wrapper.className = 'rei-repeater-field';
@@ -506,11 +527,10 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     updateParkingDepreciationRateState(row)
     {
-        const mode = row.querySelector('input[type="radio"][data-field="depreciationMode"]:checked')?.value || 'building';
-        const depreciable = row.querySelector('[data-field="depreciable"]')?.checked ?? true;
+        const mode = row.querySelector('input[type="radio"][data-field="depreciationMode"]:checked')?.value || 'building_basis';
         const rate = row.querySelector('[data-field="depreciationRatePercent"]');
         if(rate) {
-            rate.disabled = !depreciable || mode !== 'custom';
+            rate.disabled = mode !== 'custom_linear';
         }
     }
 
@@ -593,6 +613,59 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         this.setAutoNumberDefault('depreciation.startYear', Number(this.value('property.completionYear') || 0), force);
         this.setAutoNumberDefault('depreciation.startMonth', Number(this.value('property.completionMonth') || 0), force);
+    }
+
+    syncBuildingBasisFromEvent(input)
+    {
+        if(input?.dataset?.path === 'depreciation.buildingBasisOverrideEnabled') {
+            this.updateBuildingBasisOverrideState();
+            return;
+        }
+        this.syncBuildingBasisInput();
+    }
+
+    updateBuildingBasisOverrideState()
+    {
+        const input = this.getRootElement().querySelector('[data-role="building-basis-input"]');
+        if(!input) {
+            return;
+        }
+
+        input.readOnly = !this.buildingBasisOverrideEnabled();
+        this.syncBuildingBasisInput();
+    }
+
+    syncBuildingBasisInput()
+    {
+        const input = this.getRootElement().querySelector('[data-role="building-basis-input"]');
+        if(!input || this.buildingBasisOverrideEnabled()) {
+            return;
+        }
+        input.value = this.numberValue(this.calculatedAutomaticBuildingDepreciationBasis());
+    }
+
+    buildingBasisOverrideEnabled()
+    {
+        return Boolean(this.getRootElement().querySelector('[data-role="building-basis-override"]')?.checked);
+    }
+
+    syncParkingValueIncreaseDefaultFromEvent(input)
+    {
+        if(!input?.matches?.('[data-path]')) {
+            return;
+        }
+        if(input.dataset.path === 'sale.parkingAnnualValueIncreasePercent') {
+            input.dataset.autoValue = 'false';
+            return;
+        }
+        if(input.dataset.path === 'sale.annualValueIncreasePercent') {
+            this.syncParkingValueIncreaseDefault(false);
+        }
+    }
+
+    syncParkingValueIncreaseDefault(force)
+    {
+        this.setAutoNumberDefault('sale.parkingAnnualValueIncreasePercent', Number(this.value('sale.annualValueIncreasePercent') || 0), force);
     }
 
     setAutoNumberDefault(path, value, force)
@@ -701,11 +774,18 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     calculatedBuildingDepreciationBasis()
     {
-        const manualBuildingBasis = Number(this.value('depreciation.buildingBasis') || 0);
-        if(manualBuildingBasis > 0) {
-            return manualBuildingBasis;
+        if(this.buildingBasisOverrideEnabled()) {
+            const manualBuildingBasis = Number(this.value('depreciation.buildingBasis') || 0);
+            if(manualBuildingBasis > 0) {
+                return manualBuildingBasis;
+            }
         }
 
+        return this.calculatedAutomaticBuildingDepreciationBasis();
+    }
+
+    calculatedAutomaticBuildingDepreciationBasis()
+    {
         const apartment = Number(this.value('property.apartmentPurchasePrice') || 0);
         const other = Number(this.value('property.otherPurchasePrice') || 0);
         const landShare = Number(this.value('property.landSharePercent') || 0) / 100;
@@ -953,6 +1033,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         const conservative = this.clone(base);
         conservative.scenarioName = 'konservativ';
         conservative.sale.annualValueIncreasePercent = Math.max(Number(base.sale.annualValueIncreasePercent || 0) - 1, 0);
+        conservative.sale.parkingAnnualValueIncreasePercent = Math.max(Number(base.sale.parkingAnnualValueIncreasePercent ?? base.sale.annualValueIncreasePercent ?? 0) - 1, 0);
         conservative.rent.annualIncreasePercent = Math.max(Number(base.rent.annualIncreasePercent || 0) - 1, 0);
         conservative.rent.vacancyPercent = Number(base.rent.vacancyPercent || 0) + 3;
         conservative.expenses.annualIncreasePercent = Number(base.expenses.annualIncreasePercent || 0) + 1;
@@ -960,6 +1041,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         const optimistic = this.clone(base);
         optimistic.scenarioName = 'optimistisch';
         optimistic.sale.annualValueIncreasePercent = Number(base.sale.annualValueIncreasePercent || 0) + 1;
+        optimistic.sale.parkingAnnualValueIncreasePercent = Number(base.sale.parkingAnnualValueIncreasePercent ?? base.sale.annualValueIncreasePercent ?? 0) + 1;
         optimistic.rent.annualIncreasePercent = Number(base.rent.annualIncreasePercent || 0) + 1;
         optimistic.rent.vacancyPercent = Math.max(Number(base.rent.vacancyPercent || 0) - 1, 0);
 
@@ -971,6 +1053,7 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     collectScenario()
     {
+        this.updateBuildingBasisOverrideState();
         this.syncSpecial7bCalculatedCosts();
         const scenario = {};
         this.getRootElement().querySelectorAll('[data-path]').forEach(input => this.setPath(scenario, input.dataset.path, this.inputValue(input)));
@@ -978,6 +1061,10 @@ class GUI_InvestmentCalculator extends GUI_Module
         scenario.constructionInterest ??= {};
         scenario.constructionInterest.yearlyEntries = this.collectRows(this.constructionInterestList);
         scenario.loans = this.collectRows(this.loanList).map((loan, index) => ({...loan, priority: index + 1}));
+        scenario.depreciation ??= {};
+        if(!scenario.depreciation.buildingBasisOverrideEnabled) {
+            scenario.depreciation.buildingBasis = 0;
+        }
         return scenario;
     }
 
@@ -995,7 +1082,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.parkingList.innerHTML = '';
         (scenario.parkingUnits || []).forEach(row => this.addParkingRow(row));
         if(!this.parkingList.children.length) {
-            this.addParkingRow({label: 'Stellplatz', buildingSharePercent: 80, landSharePercent: 20, depreciable: true, includedInPurchasePrice: true});
+            this.addParkingRow({label: 'Stellplatz', buildingSharePercent: 80, landSharePercent: 20, depreciationMode: 'building_basis', includedInPurchasePrice: true});
         }
 
         this.constructionInterestList.innerHTML = '';
@@ -1007,8 +1094,10 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.syncDepreciationStartDefaults(true);
         }
         this.syncSpecial7bDefaults(false);
+        this.updateBuildingBasisOverrideState();
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
+        this.syncParkingValueIncreaseDefault(this.getPath(scenario, 'sale.parkingAnnualValueIncreasePercent') === undefined);
         this.restoringDraft = false;
         this.saveDraft();
     }
@@ -1054,6 +1143,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.scenarioList.value = '';
         this.syncDepreciationStartDefaults(true);
         this.syncSpecial7bDefaults(false);
+        this.updateBuildingBasisOverrideState();
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
         this.restoringDraft = false;
@@ -1096,6 +1186,8 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'afa_basis',
             'depreciation.startYear': 2026,
             'depreciation.startMonth': 1,
+            'depreciation.buildingBasis': 0,
+            'depreciation.buildingBasisOverrideEnabled': false,
             'depreciation.degressiveRatePercent': 5,
             'depreciation.linearRatePercent': 3,
             'depreciation.degressiveActive': true,
@@ -1104,6 +1196,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'depreciation.special7bLimitPerSqm': 4000,
             'depreciation.special7bRatePercent': 5,
             'depreciation.special7bYears': 4,
+            'depreciation.special7bReducesBookValueImmediately': false,
             'depreciation.furnitureRatePercent': 10,
             'tax.calculationMethod': 'marginal_rate',
             'tax.assessmentType': 'single',
@@ -1112,6 +1205,9 @@ class GUI_InvestmentCalculator extends GUI_Module
             'tax.churchTaxState': 'BY',
             'tax.taxableIncomeAnnualIncreasePercent': 0,
             'tax.marginalTaxRatePercent': 42,
+            'sale.annualValueIncreasePercent': 2,
+            'sale.parkingAnnualValueIncreasePercent': 2,
+            'sale.includeParkingInSalePrice': true,
             'sale.sellingCostsPercent': 1,
             'sale.taxFreeSale': true,
             'settings.discountRatePercent': 5,
@@ -1134,6 +1230,13 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         if(input.type === 'checkbox') {
             input.checked = Boolean(value);
+            return;
+        }
+        if(input.tagName.toLowerCase() === 'select') {
+            const stringValue = String(value ?? '');
+            input.value = Array.from(input.options).some(option => option.value === stringValue)
+                ? stringValue
+                : Array.from(input.options).find(option => option.defaultSelected)?.value || input.options[0]?.value || '';
             return;
         }
         input.value = value ?? '';
@@ -1288,6 +1391,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.renderAcquisitionBreakdown(acquisition);
         this.renderFinancingBreakdown(acquisition, summary);
         this.renderTotalBreakdown(summary);
+        this.renderSaleBreakdown(summary);
         this.renderDepreciationBasisBreakdown(summary);
     }
 
@@ -1345,15 +1449,29 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.totalBreakdown.innerHTML = this.renderBreakdownRows(rows);
     }
 
+    renderSaleBreakdown(summary)
+    {
+        const sale = summary.salePriceBreakdown || {};
+        const rows = [
+            ['Objektwert im Verkaufsjahr', sale.propertySalePrice],
+            [sale.includeParkingInSalePrice === false ? 'Stellplatzwert im Verkaufsjahr (deaktiviert)' : 'Stellplatzwert im Verkaufsjahr', sale.parkingSalePrice],
+            ['Verkaufspreis gesamt', summary.salePrice, true],
+        ];
+        this.saleBreakdown.innerHTML = this.renderBreakdownRows(rows);
+    }
+
     renderDepreciationBasisBreakdown(summary)
     {
         const special = summary.special7b || {};
         const parkingRateLabel = summary.parkingDepreciationMixedRates
             ? 'gemischt'
             : (Number(summary.parkingDepreciationRate || 0) > 0 ? this.pct(summary.parkingDepreciationRate) : '');
-        const parkingBasisLabel = parkingRateLabel ? `Stellplatz AfA-Basis (${parkingRateLabel})` : 'Stellplatz AfA-Basis';
+        const parkingBasisLabel = parkingRateLabel ? `separate SP-AfA-Basis (${parkingRateLabel})` : 'separate SP-AfA-Basis';
         const rows = [
-            ['Gebäude-AfA-Basis', summary.buildingDepreciationBasis, true],
+            [summary.buildingBasisOverrideEnabled ? 'Gebäude-Basis manuell' : 'Gebäude-Basis automatisch', summary.objectBuildingDepreciationBasis],
+            ['Stellplätze in Gebäude-AfA', summary.parkingIncludedInBuildingDepreciationBasis],
+            ['Gebäude-AfA-Basis gesamt', summary.buildingDepreciationBasis, true],
+            ['rechnerischer Stellplatzanteil aus Kaufpreisaufteilung', summary.parkingDepreciationShareInCostAllocation],
             ['Gebäude-AH-Kosten vor §7b-Kappung', special.eligibleCosts, false],
             ['Gebäude-AH-Kosten je m²', special.costsPerSqm, false, value => `${this.eur(value)} / m²`],
             ['§7b-Fläche', special.area, false, value => `${this.dec(value, 2)} m²`],

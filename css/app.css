@@ -222,6 +222,32 @@ body {
     padding-top: 28px;
 }
 
+.rei-field-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rei-info-button {
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+}
+
+.rei-info-button:hover,
+.rei-info-button:focus {
+    background: #eef2f7;
+    color: #1d4ed8;
+}
+
 .rei-inline-note {
     background: #f8fafc;
     border: 1px solid #d9e2ef;
@@ -348,6 +374,11 @@ body {
     gap: 6px;
 }
 
+.rei-repeater-row[data-type="parking"] .rei-check-field[data-field="depreciable"] {
+    flex-basis: 148px;
+    justify-content: flex-start;
+}
+
 .rei-repeater-field {
     flex: 2 1 260px;
     min-width: 0;
@@ -386,6 +417,25 @@ body {
 
 .rei-repeater-row .form-check-input {
     margin: 0;
+}
+
+.rei-repeater-row[data-type="constructionInterest"] {
+    display: grid;
+    grid-template-columns: minmax(170px, 1.7fr) 84px minmax(120px, 1fr) minmax(132px, max-content) minmax(96px, max-content) 90px;
+    align-items: end;
+}
+
+.rei-repeater-row[data-type="constructionInterest"] label,
+.rei-repeater-row[data-type="constructionInterest"] .rei-check-field,
+.rei-repeater-row[data-type="constructionInterest"] > .btn {
+    flex: initial;
+}
+
+.rei-repeater-row[data-type="constructionInterest"] .rei-check-field {
+    justify-content: flex-start;
+    align-self: end;
+    min-height: 31px;
+    white-space: nowrap;
 }
 
 .rei-repeater-row > .btn {

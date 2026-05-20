@@ -9,8 +9,6 @@ final class CalculationSettings
 {
     public const AUTO_SPECIAL_REPAYMENT_NONE = 'none';
     public const AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW = 'positive_cashflow_after_tax';
-    public const AUTO_SPECIAL_REPAYMENT_POSITIVE_OPPORTUNITY_INTEREST = 'positive_opportunity_interest';
-    public const AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW_PLUS_OPPORTUNITY_INTEREST = 'positive_cashflow_plus_opportunity_interest';
 
     public function __construct(
         public float $discountRate,
@@ -25,8 +23,6 @@ final class CalculationSettings
         if(!in_array($autoSpecialRepaymentMode, [
             self::AUTO_SPECIAL_REPAYMENT_NONE,
             self::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW,
-            self::AUTO_SPECIAL_REPAYMENT_POSITIVE_OPPORTUNITY_INTEREST,
-            self::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW_PLUS_OPPORTUNITY_INTEREST,
         ], true)) {
             $autoSpecialRepaymentMode = self::AUTO_SPECIAL_REPAYMENT_NONE;
         }

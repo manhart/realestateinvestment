@@ -7,6 +7,7 @@ use realestateinvestment\classes\Inputs\AcquisitionCostInput;
 use realestateinvestment\classes\Inputs\CalculationSettings;
 use realestateinvestment\classes\Inputs\ConstructionInterestInput;
 use realestateinvestment\classes\Inputs\DepreciationInput;
+use realestateinvestment\classes\Inputs\ParkingUnitInput;
 use realestateinvestment\classes\Inputs\RealEstateInvestmentScenario;
 use realestateinvestment\classes\Inputs\TaxInput;
 use realestateinvestment\classes\Results\InvestmentCalculationResult;
@@ -35,10 +36,14 @@ final class InvestmentCalculator
         $constructionInterestTotal = $this->constructionInterestTotal($scenario->constructionInterest);
         $totalCosts = $purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] + $constructionInterestTotal;
         $nonFinancedOneTimeCosts = max($purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] - $initialDebt, 0);
-
-        $scenario->depreciation->buildingBasis = $scenario->depreciation->buildingBasis > 0
+        $manualBuildingBasis = $scenario->depreciation->buildingBasisOverrideEnabled && $scenario->depreciation->buildingBasis > 0;
+        $autoObjectBuildingBasis = $this->buildingDepreciationBasis($costAllocation, $acquisition);
+        $objectBuildingBasis = $manualBuildingBasis
             ? $scenario->depreciation->buildingBasis
-            : $this->buildingDepreciationBasis($costAllocation, $acquisition);
+            : $autoObjectBuildingBasis;
+        $parkingIncludedInBuildingBasis = $this->parkingIncludedInBuildingDepreciationBasis($scenario, $acquisition);
+
+        $scenario->depreciation->buildingBasis = $objectBuildingBasis + $parkingIncludedInBuildingBasis;
         $scenario->depreciation->parkingDepreciationItems = $this->parkingDepreciationItems($scenario, $acquisition);
         $scenario->depreciation->parkingBasis = array_sum(array_map(static fn(array $item): float => (float)$item['basis'], $scenario->depreciation->parkingDepreciationItems));
         $scenario->depreciation->furnitureBasis = $scenario->depreciation->furnitureBasis > 0
@@ -49,7 +54,7 @@ final class InvestmentCalculator
             : $scenario->property->livingArea;
         $scenario->depreciation->special7bBasis = $scenario->depreciation->special7bBasis > 0
             ? $scenario->depreciation->special7bBasis
-            : $scenario->depreciation->buildingBasis;
+            : $objectBuildingBasis;
 
         $special7b = $this->specialAfa7bCalculator->calculate($scenario->depreciation, $scenario->property->livingArea);
         $scenario->depreciation->special7bBasis = $special7b['assessmentBasis'];
@@ -58,12 +63,12 @@ final class InvestmentCalculator
         $warnings = array_merge(
             $this->validator->validate($scenario, $totalCosts, $initialDebt),
             $special7b['warnings'],
+            $this->depreciationWarnings($manualBuildingBasis, $objectBuildingBasis, $autoObjectBuildingBasis, $parkingIncludedInBuildingBasis),
         );
         $loanStates = $this->loanCalculator->initialStates($scenario->loans);
         $depreciationYears = $this->depreciationCalculator->calculate($scenario->depreciation, $startYear, $endYear, $scenario->property->saleMonth);
 
         $rows = [];
-        $lastYearIndex = max($endYear - $startYear, 0);
         for($year = $startYear; $year <= $endYear; $year++) {
             $row = new YearlyCalculationResult($year);
             $row->rentedMonths = $this->activeMonths($year, $scenario->property->rentStartYear, $scenario->property->rentStartMonth, $endYear, $scenario->property->saleMonth);
@@ -119,7 +124,6 @@ final class InvestmentCalculator
             $autoSpecialRepayment = $this->autoSpecialRepaymentAmount(
                 $scenario->settings,
                 $row->netCashflowAfterTaxBeforeAutoSpecialRepayment,
-                $lastYearIndex - max($year - $startYear, 0),
             );
             if($autoSpecialRepayment > 0) {
                 $applied = $this->loanCalculator->applyYearEndSpecialRepayment($scenario->loans, $loanStates, $year, $endYear, $autoSpecialRepayment, $scenario->property->saleMonth);
@@ -166,7 +170,7 @@ final class InvestmentCalculator
         ];
 
         return new InvestmentCalculationResult(
-            $this->summary($scenario, $purchasePrice, $acquisition, $costAllocation, $totalCosts, $initialDebt, $firstOperatingRow, $metrics, $special7b),
+            $this->summary($scenario, $purchasePrice, $acquisition, $costAllocation, $totalCosts, $initialDebt, $firstOperatingRow, $metrics, $special7b, $objectBuildingBasis, $parkingIncludedInBuildingBasis),
             $metrics,
             $scales,
             $this->scaleEvaluator->legend(),
@@ -179,13 +183,19 @@ final class InvestmentCalculator
 
     private function purchasePrice(RealEstateInvestmentScenario $scenario): float
     {
+        $parking = $this->includedParkingPurchasePrice($scenario);
+        return $scenario->property->apartmentPurchasePrice + $scenario->property->otherPurchasePrice + $scenario->property->furniturePurchasePrice + $parking;
+    }
+
+    private function includedParkingPurchasePrice(RealEstateInvestmentScenario $scenario): float
+    {
         $parking = 0.0;
         foreach($scenario->parkingUnits as $unit) {
             if($unit->includedInPurchasePrice) {
                 $parking += $unit->purchasePrice;
             }
         }
-        return $scenario->property->apartmentPurchasePrice + $scenario->property->otherPurchasePrice + $scenario->property->furniturePurchasePrice + $parking;
+        return $parking;
     }
 
     private function initialDebt(RealEstateInvestmentScenario $scenario): float
@@ -276,19 +286,16 @@ final class InvestmentCalculator
 
         $items = [];
         foreach($scenario->parkingUnits as $unit) {
-            if(!$unit->includedInPurchasePrice || !$unit->depreciable) {
+            if(!$unit->includedInPurchasePrice || $unit->depreciationMode === 'building_basis') {
                 continue;
             }
 
-            $basis = $unit->depreciationBasis > 0
-                ? $unit->depreciationBasis
-                : $unit->purchasePrice * $unit->buildingShare
-                    + $this->allocatedDepreciationRelevantAcquisitionCosts($unit->purchasePrice, $unit->buildingShare, $acquisition);
+            $basis = $this->parkingDepreciationBasis($unit, $acquisition);
             if($basis <= 0) {
                 continue;
             }
 
-            $rate = $unit->depreciationMode === 'custom'
+            $rate = $unit->depreciationMode === 'custom_linear'
                 ? $unit->depreciationRate
                 : $scenario->depreciation->linearRate;
             $items[] = [
@@ -301,6 +308,37 @@ final class InvestmentCalculator
             ];
         }
         return $items;
+    }
+
+    private function parkingIncludedInBuildingDepreciationBasis(RealEstateInvestmentScenario $scenario, array $acquisition): float
+    {
+        $basis = 0.0;
+        foreach($scenario->parkingUnits as $unit) {
+            if($unit->includedInPurchasePrice && $unit->depreciationMode === 'building_basis') {
+                $basis += $this->parkingDepreciationBasis($unit, $acquisition);
+            }
+        }
+        return $basis;
+    }
+
+    private function parkingDepreciationBasis(ParkingUnitInput $unit, array $acquisition): float
+    {
+        return $unit->depreciationBasis > 0
+            ? $unit->depreciationBasis
+            : $unit->purchasePrice * $unit->buildingShare
+                + $this->allocatedDepreciationRelevantAcquisitionCosts($unit->purchasePrice, $unit->buildingShare, $acquisition);
+    }
+
+    private function depreciationWarnings(bool $manualBuildingBasis, float $objectBuildingBasis, float $autoObjectBuildingBasis, float $parkingIncludedInBuildingBasis): array
+    {
+        if(!$manualBuildingBasis || $parkingIncludedInBuildingBasis <= 0 || $objectBuildingBasis <= $autoObjectBuildingBasis + 1) {
+            return [];
+        }
+
+        return [[
+            'level' => 'warning',
+            'message' => 'Bitte AfA-Basis prüfen: Das Feld Gebäude-Basis wird als Basis vor Stellplatz-Einbezug erwartet. Gleichzeitig werden Stellplätze in die Gebäude-AfA einbezogen.',
+        ]];
     }
 
     private function buildingDepreciationBasis(array $costAllocation, array $acquisition): float
@@ -458,19 +496,36 @@ final class InvestmentCalculator
 
     private function salePrice(RealEstateInvestmentScenario $scenario, float $purchasePrice): float
     {
-        $years = max($scenario->property->saleYear - $scenario->property->purchaseYear, 0);
-        return $purchasePrice * ((1 + $scenario->sale->annualValueIncrease) ** $years);
+        return $this->salePriceComponents($scenario, $purchasePrice)['total'];
     }
 
-    private function autoSpecialRepaymentAmount(CalculationSettings $settings, float $cashflowAfterTaxBeforeAutoSpecialRepayment, int $yearsUntilSale): float
+    private function salePriceComponents(RealEstateInvestmentScenario $scenario, float $purchasePrice): array
+    {
+        $years = max($scenario->property->saleYear - $scenario->property->purchaseYear, 0);
+        $includedParkingBase = $this->includedParkingPurchasePrice($scenario);
+        $parkingBase = $scenario->sale->includeParkingInSalePrice ? $includedParkingBase : 0.0;
+        $propertyBase = max($purchasePrice - $includedParkingBase, 0);
+        $propertySalePrice = $propertyBase * ((1 + $scenario->sale->annualValueIncrease) ** $years);
+        $parkingSalePrice = $parkingBase * ((1 + $scenario->sale->parkingAnnualValueIncrease) ** $years);
+
+        return [
+            'years' => $years,
+            'propertyBase' => $propertyBase,
+            'includedParkingBase' => $includedParkingBase,
+            'parkingBase' => $parkingBase,
+            'propertySalePrice' => $propertySalePrice,
+            'parkingSalePrice' => $parkingSalePrice,
+            'total' => $propertySalePrice + $parkingSalePrice,
+            'includeParkingInSalePrice' => $scenario->sale->includeParkingInSalePrice,
+        ];
+    }
+
+    private function autoSpecialRepaymentAmount(CalculationSettings $settings, float $cashflowAfterTaxBeforeAutoSpecialRepayment): float
     {
         $positiveCashflow = max($cashflowAfterTaxBeforeAutoSpecialRepayment, 0);
-        $positiveOpportunityInterest = max($cashflowAfterTaxBeforeAutoSpecialRepayment * (((1 + $settings->discountRate) ** max($yearsUntilSale, 0)) - 1), 0);
 
         return match($settings->autoSpecialRepaymentMode) {
             CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW => $positiveCashflow,
-            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_OPPORTUNITY_INTEREST => $positiveOpportunityInterest,
-            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW_PLUS_OPPORTUNITY_INTEREST => $positiveCashflow + $positiveOpportunityInterest,
             default => 0.0,
         };
     }
@@ -479,8 +534,6 @@ final class InvestmentCalculator
     {
         return [
             CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW => 'positiver CF nach Steuer',
-            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_OPPORTUNITY_INTEREST => 'positiver Opportunitätszins',
-            CalculationSettings::AUTO_SPECIAL_REPAYMENT_POSITIVE_CASHFLOW_PLUS_OPPORTUNITY_INTEREST => 'positiver CF + positiver Opportunitätszins',
         ][$mode] ?? 'deaktiviert';
     }
 
@@ -584,7 +637,7 @@ final class InvestmentCalculator
         return null;
     }
 
-    private function summary(RealEstateInvestmentScenario $scenario, float $purchasePrice, array $acquisition, array $costAllocation, float $totalCosts, float $initialDebt, ?YearlyCalculationResult $firstOperatingRow, array $metrics, array $special7b): array
+    private function summary(RealEstateInvestmentScenario $scenario, float $purchasePrice, array $acquisition, array $costAllocation, float $totalCosts, float $initialDebt, ?YearlyCalculationResult $firstOperatingRow, array $metrics, array $special7b, float $objectBuildingBasis, float $parkingIncludedInBuildingBasis): array
     {
         $annualRent = $firstOperatingRow?->rent ?? 0.0;
         $monthlyRent = $annualRent / max($firstOperatingRow?->rentedMonths ?? 12, 1);
@@ -592,6 +645,10 @@ final class InvestmentCalculator
         $constructionInterestTotal = $this->constructionInterestTotal($scenario->constructionInterest);
         $constructionInterestCashTotal = $this->constructionInterestCashTotal($scenario->constructionInterest);
         $oneTimeFinancingCostsTotal = $acquisition['financing'] + $constructionInterestTotal;
+        $salePriceBreakdown = $this->salePriceComponents($scenario, $purchasePrice);
+        $parkingBuildingRatio = $costAllocation['parkingTotal'] > 0 ? $costAllocation['parkingBuildingCosts'] / $costAllocation['parkingTotal'] : 0.0;
+        $parkingDepreciationShareInCostAllocation = $costAllocation['parkingBuildingCosts']
+            + $this->allocatedDepreciationRelevantAcquisitionCosts($costAllocation['parkingTotal'], $parkingBuildingRatio, $acquisition);
         $acquisitionBreakdown = [
             'realEstatePurchasePrice' => $acquisition['realEstatePurchasePrice'],
             'realEstateTransferTax' => $acquisition['realEstateTransferTax'],
@@ -615,7 +672,11 @@ final class InvestmentCalculator
             'financingCosts' => $acquisition['financing'],
             'acquisitionBreakdown' => $acquisitionBreakdown,
             'costAllocation' => $costAllocation,
+            'objectBuildingDepreciationBasis' => $objectBuildingBasis,
+            'parkingIncludedInBuildingDepreciationBasis' => $parkingIncludedInBuildingBasis,
             'buildingDepreciationBasis' => $scenario->depreciation->buildingBasis,
+            'buildingBasisOverrideEnabled' => $scenario->depreciation->buildingBasisOverrideEnabled,
+            'parkingDepreciationShareInCostAllocation' => $parkingDepreciationShareInCostAllocation,
             'furnitureDepreciationBasis' => $scenario->depreciation->furnitureBasis,
             'parkingDepreciationBasis' => $scenario->depreciation->parkingBasis,
             'parkingDepreciationRate' => $this->singleParkingDepreciationRate($scenario->depreciation->parkingDepreciationItems),
@@ -626,6 +687,8 @@ final class InvestmentCalculator
             'constructionInterestFinancedTotal' => max($constructionInterestTotal - $constructionInterestCashTotal, 0),
             'oneTimeFinancingCostsTotal' => $oneTimeFinancingCostsTotal,
             'totalInvestmentCost' => $totalCosts,
+            'salePrice' => $salePriceBreakdown['total'],
+            'salePriceBreakdown' => $salePriceBreakdown,
             'special7b' => $special7b,
             'initialDebt' => $initialDebt,
             'monthlyRent' => $monthlyRent,
@@ -677,6 +740,19 @@ final class InvestmentCalculator
             : 'keine Bauzeitzins-Jahreszeilen';
         $deductibleConstructionInterestTotal = $this->constructionInterestDeductibleTotal($scenario->constructionInterest);
         $deductibleFinancingCosts = $scenario->acquisitionCosts->financingCostsDeductible ? $acquisition['financing'] : 0.0;
+        $propertyBuildingRatio = $costAllocation['propertySplitBase'] > 0 ? $costAllocation['propertyBuildingCosts'] / $costAllocation['propertySplitBase'] : 0.0;
+        $propertyDepreciationRelevantAcquisitionCosts = $this->allocatedDepreciationRelevantAcquisitionCosts($costAllocation['propertySplitBase'], $propertyBuildingRatio, $acquisition);
+        $parkingBuildingRatio = $costAllocation['parkingTotal'] > 0 ? $costAllocation['parkingBuildingCosts'] / $costAllocation['parkingTotal'] : 0.0;
+        $parkingDepreciationRelevantAcquisitionCosts = $this->allocatedDepreciationRelevantAcquisitionCosts($costAllocation['parkingTotal'], $parkingBuildingRatio, $acquisition);
+        $parkingIncludedInBuildingBasis = $this->parkingIncludedInBuildingDepreciationBasis($scenario, $acquisition);
+        $objectBuildingBasis = max($scenario->depreciation->buildingBasis - $parkingIncludedInBuildingBasis, 0);
+        $buildingBasisLabel = $scenario->depreciation->buildingBasisOverrideEnabled ? 'Gebäude-Basis manuell' : 'Gebäude-Basis automatisch';
+        $buildingBasisFormula = $scenario->depreciation->buildingBasisOverrideEnabled
+            ? 'manueller Eingabewert'
+            : '(Wohnung + sonstige Bestandteile) × Gebäudeanteil + anteilige AfA-relevante Erwerbsnebenkosten';
+        $buildingBasisValues = $scenario->depreciation->buildingBasisOverrideEnabled
+            ? (string)$objectBuildingBasis
+            : $costAllocation['propertyBuildingCosts'].' + '.$propertyDepreciationRelevantAcquisitionCosts;
 
         $rows = [
             [
@@ -756,9 +832,25 @@ final class InvestmentCalculator
             ],
             [
                 'group' => 'AfA',
-                'label' => 'Gebäude-AfA-Basis',
-                'formula' => 'Herstellungskosten/Gebäude + anteilige AfA-relevante Erwerbsnebenkosten',
-                'values' => $costAllocation['buildingCosts'].' + anteilig '.$acquisition['depreciationRelevantWithoutFinancing'],
+                'label' => $buildingBasisLabel,
+                'formula' => $buildingBasisFormula,
+                'values' => $buildingBasisValues,
+                'result' => $objectBuildingBasis,
+                'source' => OfficialSourceRegistry::get('hgb_255_anschaffungskosten'),
+            ],
+            [
+                'group' => 'AfA',
+                'label' => 'Stellplätze in Gebäude-AfA',
+                'formula' => 'Σ Stellplatz-Kaufpreis × Stellplatz-Gebäudeanteil + anteilige AfA-relevante Erwerbsnebenkosten',
+                'values' => $costAllocation['parkingBuildingCosts'].' + '.$parkingDepreciationRelevantAcquisitionCosts,
+                'result' => $parkingIncludedInBuildingBasis,
+                'source' => OfficialSourceRegistry::get('hgb_255_anschaffungskosten'),
+            ],
+            [
+                'group' => 'AfA',
+                'label' => 'Gebäude-AfA-Basis gesamt',
+                'formula' => 'Gebäude-Basis + Stellplätze in Gebäude-AfA',
+                'values' => $objectBuildingBasis.' + '.$parkingIncludedInBuildingBasis,
                 'result' => $scenario->depreciation->buildingBasis,
                 'source' => OfficialSourceRegistry::get('hgb_255_anschaffungskosten'),
             ],
@@ -833,8 +925,8 @@ final class InvestmentCalculator
             $rows[] = [
                 'group' => 'Finanzierung',
                 'label' => 'Auto-Sondertilgung',
-                'formula' => 'Jahresend-Sondertilgung aus gewählter Überschussquelle, gedeckelt auf Restschuld des Zielkredits',
-                'values' => $this->autoSpecialRepaymentModeLabel($scenario->settings->autoSpecialRepaymentMode).', Ziel: höchster Sollzins',
+                'formula' => 'Jahresend-Sondertilgung aus positivem Netto-Cashflow nach Steuer, gedeckelt auf Restschuld des Zielkredits',
+                'values' => $this->autoSpecialRepaymentModeLabel($scenario->settings->autoSpecialRepaymentMode).', Ziel: aktiver Kredit mit höchstem Sollzins',
                 'result' => $autoSpecialRepaymentTotal,
             ];
         }
@@ -927,16 +1019,31 @@ final class InvestmentCalculator
         }
 
         $saleRow = $yearlyRows[array_key_last($yearlyRows)];
-        $yearsSincePurchase = max($scenario->property->saleYear - $scenario->property->purchaseYear, 0);
+        $salePriceComponents = $this->salePriceComponents($scenario, $purchasePrice);
+        $yearsSincePurchase = $salePriceComponents['years'];
         $sellingCosts = $saleRow->salePrice * $scenario->sale->sellingCostsRate + $scenario->sale->sellingCostsAmount;
         $cashflowAfterTaxTotal = array_sum(array_map(static fn(YearlyCalculationResult $row): float => $row->netCashflowAfterTax, $yearlyRows));
         $cashflowIncludingSaleTotal = array_sum(array_map(static fn(YearlyCalculationResult $row): float => $row->netCashflowIncludingSale, $yearlyRows));
 
         return [[
             'group' => 'Verkauf & Nettoeffekt',
+            'label' => 'Verkaufspreis Objekt '.$saleRow->year,
+            'formula' => 'Kaufpreis ohne Stellplätze × (1 + Wertsteigerung Objekt)^Jahre seit Kauf',
+            'values' => $salePriceComponents['propertyBase'].' × (1 + '.$this->percent($scenario->sale->annualValueIncrease).')^'.$yearsSincePurchase,
+            'result' => $salePriceComponents['propertySalePrice'],
+        ], [
+            'group' => 'Verkauf & Nettoeffekt',
+            'label' => 'Verkaufspreis Stellplätze '.$saleRow->year,
+            'formula' => 'Stellplatz-Kaufpreise × (1 + Wertsteigerung Stellplätze)^Jahre seit Kauf',
+            'values' => $salePriceComponents['includeParkingInSalePrice']
+                ? $salePriceComponents['parkingBase'].' × (1 + '.$this->percent($scenario->sale->parkingAnnualValueIncrease).')^'.$yearsSincePurchase
+                : 'Stellplätze im Verkaufswert deaktiviert',
+            'result' => $salePriceComponents['parkingSalePrice'],
+        ], [
+            'group' => 'Verkauf & Nettoeffekt',
             'label' => 'Verkaufspreis '.$saleRow->year,
-            'formula' => 'Gesamtkaufpreis × (1 + Wertsteigerung)^Jahre seit Kauf',
-            'values' => $purchasePrice.' × (1 + '.$this->percent($scenario->sale->annualValueIncrease).')^'.$yearsSincePurchase,
+            'formula' => 'Verkaufspreis Objekt + Verkaufspreis Stellplätze/Garagen',
+            'values' => $salePriceComponents['propertySalePrice'].' + '.$salePriceComponents['parkingSalePrice'],
             'result' => $saleRow->salePrice,
         ], [
             'group' => 'Verkauf & Nettoeffekt',

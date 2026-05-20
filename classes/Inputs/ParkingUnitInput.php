@@ -13,7 +13,6 @@ final class ParkingUnitInput
         public float $monthlyRent,
         public float $buildingShare,
         public float $landShare,
-        public bool $depreciable,
         public string $depreciationMode,
         public float $depreciationRate,
         public float $depreciationBasis,
@@ -24,9 +23,14 @@ final class ParkingUnitInput
 
     public static function fromArray(array $data): self
     {
-        $depreciationMode = InputReader::string($data, 'depreciationMode', 'building');
-        if(!in_array($depreciationMode, ['building', 'custom'], true)) {
-            $depreciationMode = 'building';
+        $depreciationMode = InputReader::string($data, 'depreciationMode', 'building_basis');
+        $depreciationMode = match($depreciationMode) {
+            'building' => 'building_basis',
+            'custom' => 'custom_linear',
+            default => $depreciationMode,
+        };
+        if(!in_array($depreciationMode, ['building_basis', 'linear_building', 'custom_linear'], true)) {
+            $depreciationMode = 'building_basis';
         }
         $depreciationStartMonth = InputReader::int($data, 'depreciationStartMonth');
         if($depreciationStartMonth < 1 || $depreciationStartMonth > 12) {
@@ -39,7 +43,6 @@ final class ParkingUnitInput
             InputReader::float($data, 'monthlyRent'),
             InputReader::rate($data, 'buildingSharePercent', 80),
             InputReader::rate($data, 'landSharePercent', 20),
-            InputReader::bool($data, 'depreciable', true),
             $depreciationMode,
             InputReader::rate($data, 'depreciationRatePercent'),
             InputReader::float($data, 'depreciationBasis'),

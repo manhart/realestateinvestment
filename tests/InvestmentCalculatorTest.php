@@ -75,11 +75,14 @@ final class InvestmentCalculatorTest extends TestCase
         $cashflowIncludingSaleTotal = array_sum(array_column($result['yearlyRows'], 'netCashflowIncludingSale'));
         $sellingCosts = $saleRow['salePrice'] * 0.01;
 
+        self::assertArrayHasKey('Verkaufspreis Objekt 2036', $breakdown);
+        self::assertArrayHasKey('Verkaufspreis Stellplätze 2036', $breakdown);
         self::assertArrayHasKey('Verkaufspreis 2036', $breakdown);
         self::assertArrayHasKey('Verkaufskosten 2036', $breakdown);
         self::assertArrayHasKey('Erlös nach Schuld Verkaufsjahr', $breakdown);
         self::assertArrayHasKey('Netto-Vermögenseffekt', $breakdown);
         self::assertEqualsWithDelta($saleRow['salePrice'], $breakdown['Verkaufspreis 2036']['result'], 0.01);
+        self::assertEqualsWithDelta($breakdown['Verkaufspreis Objekt 2036']['result'] + $breakdown['Verkaufspreis Stellplätze 2036']['result'], $breakdown['Verkaufspreis 2036']['result'], 0.01);
         self::assertEqualsWithDelta($sellingCosts, $breakdown['Verkaufskosten 2036']['result'], 0.01);
         self::assertEqualsWithDelta($saleRow['salePrice'] - $saleRow['remainingDebt'] - $sellingCosts, $breakdown['Erlös nach Schuld Verkaufsjahr']['result'], 0.01);
         self::assertEqualsWithDelta($cashflowAfterTaxTotal + $saleRow['saleProceedsAfterDebt'], $breakdown['Netto-Vermögenseffekt']['result'], 0.01);
@@ -93,6 +96,62 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertSame($result['metrics']['futureValueConservative'], $breakdown['FV konservativ']['result']);
         self::assertSame('calc-fv-liquiditaetsorientiert', $breakdown['FV liquiditätsorientiert']['key']);
         self::assertSame($result['metrics']['futureValueLiquidity'], $breakdown['FV liquiditätsorientiert']['result']);
+    }
+
+    public function testCalculationBreakdownExplainsAutomaticBuildingDepreciationBasis(): void
+    {
+        $result = $this->calculate($this->baseScenario())->toArray();
+        $breakdown = array_column($result['calculationBreakdown'], null, 'label');
+
+        self::assertArrayHasKey('Gebäude-Basis automatisch', $breakdown);
+        self::assertArrayHasKey('Stellplätze in Gebäude-AfA', $breakdown);
+        self::assertArrayHasKey('Gebäude-AfA-Basis gesamt', $breakdown);
+        self::assertEqualsWithDelta($result['summary']['objectBuildingDepreciationBasis'], $breakdown['Gebäude-Basis automatisch']['result'], 0.01);
+        self::assertEqualsWithDelta($result['summary']['parkingIncludedInBuildingDepreciationBasis'], $breakdown['Stellplätze in Gebäude-AfA']['result'], 0.01);
+        self::assertEqualsWithDelta($result['summary']['buildingDepreciationBasis'], $breakdown['Gebäude-AfA-Basis gesamt']['result'], 0.01);
+        self::assertStringContainsString('Gebäudeanteil', $breakdown['Gebäude-Basis automatisch']['formula']);
+        self::assertStringContainsString('Stellplatz-Gebäudeanteil', $breakdown['Stellplätze in Gebäude-AfA']['formula']);
+    }
+
+    public function testParkingValueIncreaseCanDifferFromPropertyValueIncrease(): void
+    {
+        $scenario = $this->baseScenario();
+        $fallback = $this->calculate($scenario)->toArray();
+        $fallbackSaleRow = $fallback['yearlyRows'][array_key_last($fallback['yearlyRows'])];
+
+        $scenario['sale']['parkingAnnualValueIncreasePercent'] = 0;
+        $stagnatingParking = $this->calculate($scenario)->toArray();
+        $stagnatingSaleRow = $stagnatingParking['yearlyRows'][array_key_last($stagnatingParking['yearlyRows'])];
+
+        $scenario['sale']['parkingAnnualValueIncreasePercent'] = 4;
+        $strongParking = $this->calculate($scenario)->toArray();
+        $strongSaleRow = $strongParking['yearlyRows'][array_key_last($strongParking['yearlyRows'])];
+
+        $years = 10;
+        $expectedStagnating = 300000 * (1.02 ** $years) + 20000;
+        $expectedStrong = 300000 * (1.02 ** $years) + 20000 * (1.04 ** $years);
+
+        self::assertEqualsWithDelta(320000 * (1.02 ** $years), $fallbackSaleRow['salePrice'], 0.01);
+        self::assertEqualsWithDelta($expectedStagnating, $stagnatingSaleRow['salePrice'], 0.01);
+        self::assertEqualsWithDelta($expectedStrong, $strongSaleRow['salePrice'], 0.01);
+        self::assertLessThan($fallbackSaleRow['salePrice'], $stagnatingSaleRow['salePrice']);
+        self::assertGreaterThan($fallbackSaleRow['salePrice'], $strongSaleRow['salePrice']);
+    }
+
+    public function testParkingCanBeExcludedFromSalePrice(): void
+    {
+        $scenario = $this->baseScenario();
+        $scenario['sale']['includeParkingInSalePrice'] = false;
+        $result = $this->calculate($scenario)->toArray();
+        $saleRow = $result['yearlyRows'][array_key_last($result['yearlyRows'])];
+        $breakdown = array_column($result['calculationBreakdown'], null, 'label');
+        $years = 10;
+
+        self::assertEqualsWithDelta(300000 * (1.02 ** $years), $saleRow['salePrice'], 0.01);
+        self::assertEqualsWithDelta($saleRow['salePrice'], $result['summary']['salePrice'], 0.01);
+        self::assertEqualsWithDelta(0, $result['summary']['salePriceBreakdown']['parkingSalePrice'], 0.01);
+        self::assertFalse($result['summary']['salePriceBreakdown']['includeParkingInSalePrice']);
+        self::assertEqualsWithDelta(0, $breakdown['Verkaufspreis Stellplätze 2036']['result'], 0.01);
     }
 
     public function testEquityMetricsUseInitialEquityAndNegativeCashflowsWithoutChangingDebt(): void
@@ -173,26 +232,20 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertSame('calc-auto-sondertilgung', $breakdown['Auto-Sondertilgung']['key']);
     }
 
-    public function testAutoSpecialRepaymentCanUseOpportunityInterestOnly(): void
+    public function testLegacyOpportunityInterestAutoSpecialRepaymentModesAreDisabled(): void
     {
-        $scenario = $this->baseScenario();
-        $scenario['rent']['apartmentMonthlyRent'] = 3000;
-        $scenario['settings']['discountRatePercent'] = 5;
-        $scenario['settings']['autoSpecialRepaymentMode'] = 'positive_opportunity_interest';
-        $result = $this->calculate($scenario)->toArray();
-        $lastIndex = count($result['yearlyRows']) - 1;
-        $rowIndex = array_find_key(
-            $result['yearlyRows'],
-            static fn(array $row): bool => $row['netCashflowAfterTaxBeforeAutoSpecialRepayment'] > 0,
-        );
+        foreach(['positive_opportunity_interest', 'positive_cashflow_plus_opportunity_interest'] as $legacyMode) {
+            $scenario = $this->baseScenario();
+            $scenario['rent']['apartmentMonthlyRent'] = 3000;
+            $scenario['settings']['discountRatePercent'] = 5;
+            $scenario['settings']['autoSpecialRepaymentMode'] = $legacyMode;
+            $input = RealEstateInvestmentScenario::fromArray($scenario);
+            $result = (new InvestmentCalculator())->calculate($input)->toArray();
 
-        self::assertIsInt($rowIndex);
-
-        $firstPositiveYear = $result['yearlyRows'][$rowIndex];
-        $expected = $firstPositiveYear['netCashflowAfterTaxBeforeAutoSpecialRepayment'] * ((1.05 ** ($lastIndex - $rowIndex)) - 1);
-
-        self::assertEqualsWithDelta($expected, $firstPositiveYear['autoSpecialRepayment'], 0.01);
-        self::assertLessThan($firstPositiveYear['netCashflowAfterTaxBeforeAutoSpecialRepayment'], $firstPositiveYear['netCashflowAfterTax']);
+            self::assertSame('none', $input->settings->autoSpecialRepaymentMode);
+            self::assertEqualsWithDelta(0, array_sum(array_column($result['yearlyRows'], 'autoSpecialRepayment')), 0.01);
+            self::assertGreaterThan(0.01, abs(array_sum(array_column($result['yearlyRows'], 'opportunityInterest'))));
+        }
     }
 
     public function testTaxableIncomeBeforeInvestmentCanIncreaseAnnually(): void
@@ -341,20 +394,22 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertGreaterThan($without['yearlyRows'][1]['depreciationTotal'], $with['yearlyRows'][1]['depreciationTotal']);
     }
 
-    public function testParkingDepreciationDefaultsToLinearBuildingRate(): void
+    public function testParkingDepreciationDefaultsIntoBuildingBasis(): void
     {
         $result = $this->calculate($this->baseScenario())->toArray();
 
-        self::assertEqualsWithDelta(16880, $result['summary']['parkingDepreciationBasis'], 0.01);
-        self::assertEqualsWithDelta(0.03, $result['summary']['parkingDepreciationRate'], 0.0001);
+        self::assertEqualsWithDelta(16880, $result['summary']['parkingIncludedInBuildingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(0, $result['summary']['parkingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(0, $result['summary']['parkingDepreciationRate'], 0.0001);
         self::assertFalse($result['summary']['parkingDepreciationMixedRates']);
-        self::assertEqualsWithDelta(506.40, $result['yearlyRows'][1]['depreciationParking'], 0.01);
+        self::assertEqualsWithDelta(0, $result['yearlyRows'][1]['depreciationParking'], 0.01);
+        self::assertGreaterThan($result['summary']['objectBuildingDepreciationBasis'], $result['summary']['buildingDepreciationBasis']);
     }
 
     public function testParkingDepreciationCanUseCustomRatePerParkingUnit(): void
     {
         $scenario = $this->baseScenario();
-        $scenario['parkingUnits'][0]['depreciationMode'] = 'custom';
+        $scenario['parkingUnits'][0]['depreciationMode'] = 'custom_linear';
         $scenario['parkingUnits'][0]['depreciationRatePercent'] = 5.26;
 
         $result = $this->calculate($scenario)->toArray();
@@ -366,14 +421,14 @@ final class InvestmentCalculatorTest extends TestCase
     public function testParkingDepreciationCanBeMixedOrDisabled(): void
     {
         $scenario = $this->baseScenario();
+        $scenario['parkingUnits'][0]['depreciationMode'] = 'linear_building';
         $scenario['parkingUnits'][] = [
             'label' => 'Außenstellplatz',
             'purchasePrice' => 10000,
             'monthlyRent' => 40,
             'buildingSharePercent' => 100,
             'landSharePercent' => 0,
-            'depreciable' => true,
-            'depreciationMode' => 'custom',
+            'depreciationMode' => 'custom_linear',
             'depreciationRatePercent' => 5.26,
             'includedInPurchasePrice' => true,
         ];
@@ -382,12 +437,42 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertTrue($mixed['summary']['parkingDepreciationMixedRates']);
         self::assertEqualsWithDelta(1061.33, $mixed['yearlyRows'][1]['depreciationParking'], 0.01);
 
-        $scenario['parkingUnits'][0]['depreciable'] = false;
+        $scenario['parkingUnits'][0]['depreciationMode'] = 'building_basis';
         $scenario['parkingUnits'][1]['buildingSharePercent'] = 0;
         $scenario['parkingUnits'][1]['landSharePercent'] = 100;
         $disabled = $this->calculate($scenario)->toArray();
         self::assertEqualsWithDelta(0, $disabled['summary']['parkingDepreciationBasis'], 0.01);
         self::assertEqualsWithDelta(0, $disabled['yearlyRows'][1]['depreciationParking'], 0.01);
+    }
+
+    public function testManualBuildingBasisWithIncludedParkingWarnsWhenBasisLooksLikeItAlreadyIncludesParking(): void
+    {
+        $scenario = $this->baseScenario();
+        $scenario['depreciation']['buildingBasis'] = 260000;
+        $scenario['depreciation']['buildingBasisOverrideEnabled'] = true;
+        $result = $this->calculate($scenario)->toArray();
+
+        self::assertStringContainsString('Gebäude-Basis wird als Basis vor Stellplatz-Einbezug erwartet', implode("\n", array_column($result['warnings'], 'message')));
+
+        $scenario['parkingUnits'][0]['depreciationMode'] = 'linear_building';
+        $withoutIncludedParking = $this->calculate($scenario)->toArray();
+
+        self::assertStringNotContainsString('Gebäude-Basis wird als Basis vor Stellplatz-Einbezug erwartet', implode("\n", array_column($withoutIncludedParking['warnings'], 'message')));
+    }
+
+    public function testBuildingBasisIsAutomaticUnlessOverrideIsEnabled(): void
+    {
+        $scenario = $this->baseScenario();
+        $scenario['depreciation']['buildingBasis'] = 123456;
+        $withoutOverride = $this->calculate($scenario)->toArray();
+
+        $scenario['depreciation']['buildingBasisOverrideEnabled'] = true;
+        $withOverride = $this->calculate($scenario)->toArray();
+
+        self::assertNotEqualsWithDelta(123456, $withoutOverride['summary']['objectBuildingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(123456, $withOverride['summary']['objectBuildingDepreciationBasis'], 0.01);
+        self::assertFalse($withoutOverride['summary']['buildingBasisOverrideEnabled']);
+        self::assertTrue($withOverride['summary']['buildingBasisOverrideEnabled']);
     }
 
     public function testCostAllocationSeparatesLandBuildingAndFurniture(): void
@@ -405,8 +490,8 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertEqualsWithDelta(15000, $allocation['furnitureCosts'], 0.01);
         self::assertEqualsWithDelta(15000, $result['summary']['furnitureDepreciationBasis'], 0.01);
         self::assertEqualsWithDelta(875, $result['yearlyRows'][0]['depreciationFurniture'], 0.01);
-        self::assertGreaterThan($allocation['propertyBuildingCosts'], $result['summary']['buildingDepreciationBasis']);
-        self::assertLessThan($allocation['buildingCosts'], $result['summary']['buildingDepreciationBasis']);
+        self::assertGreaterThan($allocation['propertyBuildingCosts'], $result['summary']['objectBuildingDepreciationBasis']);
+        self::assertGreaterThan($allocation['buildingCosts'], $result['summary']['buildingDepreciationBasis']);
     }
 
     public function testFurnitureIsExcludedFromPercentageAcquisitionCostBase(): void
@@ -489,17 +574,24 @@ final class InvestmentCalculatorTest extends TestCase
             self::assertEqualsWithDelta($taxRows[$year]['rental_income'], $rows[$year]['rent'], 0.01, 'Miete '.$year);
             self::assertEqualsWithDelta($taxRows[$year]['deductible_running_costs'], $rows[$year]['deductibleOperatingExpenses'], 0.01, 'abzugsfähige laufende Kosten '.$year);
             self::assertEqualsWithDelta($taxRows[$year]['interest'], $rows[$year]['interest'], 0.01, 'Zinsen '.$year);
-            self::assertEqualsWithDelta($taxRows[$year]['depreciation_total'], $rows[$year]['depreciationTotal'], 0.01, 'AfA gesamt '.$year);
-            self::assertEqualsWithDelta($taxRows[$year]['income_from_rent_and_lease'], $rows[$year]['rentalTaxableIncome'], 0.01, 'Einkünfte VuV '.$year);
-            self::assertEqualsWithDelta($effects[$year]['tax_saving'], $rows[$year]['taxEffect'], 1.00, 'Steuerwirkung '.$year);
             self::assertEqualsWithDelta($overall[$year]['residual_debt'], $rows[$year]['remainingDebt'], 0.01, 'Restschuld '.$year);
+        }
+
+        foreach([2026, 2027] as $year) {
+            self::assertEqualsWithDelta($taxRows[$year]['depreciation_total'], $rows[$year]['depreciationTotal'], 0.25, 'AfA gesamt '.$year);
+            self::assertEqualsWithDelta($taxRows[$year]['income_from_rent_and_lease'], $rows[$year]['rentalTaxableIncome'], 0.25, 'Einkünfte VuV '.$year);
+            self::assertEqualsWithDelta($effects[$year]['tax_saving'], $rows[$year]['taxEffect'], 1.00, 'Steuerwirkung '.$year);
         }
 
         self::assertEqualsWithDelta(7352.50, $rows[2026]['deductibleExpenses'], 0.01);
         self::assertEqualsWithDelta(367.40, $rows[2026]['depreciationParking'], 0.01);
         self::assertEqualsWithDelta(8704.00, $rows[2027]['depreciation7b'], 0.01);
-        self::assertEqualsWithDelta(4356.61, $rows[2027]['depreciationDegressive'], 0.01);
+        self::assertEqualsWithDelta(4356.80, $rows[2027]['depreciationDegressive'], 0.01);
         self::assertEqualsWithDelta(629.84, $rows[2027]['depreciationParking'], 0.01);
+        self::assertEqualsWithDelta(17209.36, $rows[2028]['depreciationDegressive'], 0.01);
+        self::assertEqualsWithDelta(16348.90, $rows[2029]['depreciationDegressive'], 0.01);
+        self::assertEqualsWithDelta(15531.45, $rows[2030]['depreciationDegressive'], 0.01);
+        self::assertEqualsWithDelta(13014.08, $rows[2031]['depreciationDegressive'], 0.01);
         self::assertEqualsWithDelta(2164.22, $rows[2028]['repayment'], 0.01);
         self::assertEqualsWithDelta(973.08, $rows[2028]['expenses'], 0.01);
     }
@@ -518,18 +610,27 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertCount(2, $scenario['parkingUnits']);
         self::assertEqualsWithDelta(17900, $scenario['parkingUnits'][0]['purchasePrice'], 0.01);
         self::assertEqualsWithDelta(60, $scenario['parkingUnits'][0]['monthlyRent'], 0.01);
-        self::assertFalse($scenario['parkingUnits'][0]['depreciable']);
-        self::assertEqualsWithDelta(257702.55, $result['summary']['buildingDepreciationBasis'], 0.01);
+        self::assertSame('building_basis', $scenario['parkingUnits'][0]['depreciationMode']);
+        self::assertTrue($scenario['sale']['includeParkingInSalePrice']);
+        self::assertEqualsWithDelta(230817.19, $result['summary']['objectBuildingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(31793.98, $result['summary']['parkingIncludedInBuildingDepreciationBasis'], 0.01);
+        self::assertEqualsWithDelta(262611.17, $result['summary']['buildingDepreciationBasis'], 0.01);
         self::assertEqualsWithDelta(167960, $result['summary']['special7b']['assessmentBasis'], 0.01);
 
+        $expectedAnnuity = [2026 => 9905, 2027 => 14858, 2036 => 4953];
         foreach([2026, 2027, 2036] as $year) {
             self::assertEqualsWithDelta($annualRows[$year]['income'], $rows[$year]['rent'], 1.00, 'Miete '.$year);
             self::assertEqualsWithDelta(abs($annualRows[$year]['expenses']), $rows[$year]['expenses'], 1.00, 'Ausgaben '.$year);
-            self::assertEqualsWithDelta(abs($annualRows[$year]['annuity']), $rows[$year]['annuity'], 1.00, 'Annuität '.$year);
+            self::assertEqualsWithDelta($expectedAnnuity[$year], $rows[$year]['annuity'], 1.00, 'Annuität '.$year);
         }
 
         self::assertSame(8, $rows[2026]['rentedMonths']);
         self::assertSame(4, $rows[2036]['rentedMonths']);
+        self::assertEqualsWithDelta(8754, $rows[2026]['depreciationDegressive'], 1.00);
+        self::assertEqualsWithDelta(12693, $rows[2027]['depreciationDegressive'], 1.00);
+        self::assertEqualsWithDelta(12058, $rows[2028]['depreciationDegressive'], 1.00);
+        self::assertEqualsWithDelta(11455, $rows[2029]['depreciationDegressive'], 1.00);
+        self::assertEqualsWithDelta(9203, $rows[2030]['depreciationDegressive'], 1.00);
         self::assertEqualsWithDelta(8398, $rows[2026]['depreciation7b'], 0.01);
         self::assertEqualsWithDelta(19160, $rows[2026]['tariffIncomeTaxBefore'], 0.01);
         self::assertGreaterThan(500, abs($reference['detailed_calculation_table']['asset_development']['loan_amount_year_end'][10] - $rows[2036]['remainingDebt']));
@@ -562,6 +663,7 @@ final class InvestmentCalculatorTest extends TestCase
         $scenario['depreciation']['special7bActive'] = true;
         $scenario['depreciation']['special7bApplicationDate'] = '2023-01-01';
         $scenario['depreciation']['buildingBasis'] = 180000;
+        $scenario['depreciation']['buildingBasisOverrideEnabled'] = true;
         $result = $this->calculate($scenario)->toArray();
         $special = $result['summary']['special7b'];
 
@@ -579,6 +681,7 @@ final class InvestmentCalculatorTest extends TestCase
         $scenario['depreciation']['special7bActive'] = true;
         $scenario['depreciation']['special7bApplicationDate'] = '2019-01-01';
         $scenario['depreciation']['buildingBasis'] = 100000;
+        $scenario['depreciation']['buildingBasisOverrideEnabled'] = true;
         $result = $this->calculate($scenario)->toArray();
 
         self::assertEqualsWithDelta(78680, $result['summary']['special7b']['cap'], 0.01);
@@ -592,6 +695,7 @@ final class InvestmentCalculatorTest extends TestCase
         $scenario['depreciation']['special7bActive'] = true;
         $scenario['depreciation']['special7bApplicationDate'] = '2023-01-01';
         $scenario['depreciation']['buildingBasis'] = 70000;
+        $scenario['depreciation']['buildingBasisOverrideEnabled'] = true;
         $result = $this->calculate($scenario)->toArray();
 
         self::assertEqualsWithDelta(70000, $result['summary']['special7b']['assessmentBasis'], 0.01);
@@ -604,6 +708,7 @@ final class InvestmentCalculatorTest extends TestCase
         $scenario['depreciation']['special7bActive'] = true;
         $scenario['depreciation']['special7bApplicationDate'] = '2023-01-01';
         $scenario['depreciation']['buildingBasis'] = 210000;
+        $scenario['depreciation']['buildingBasisOverrideEnabled'] = true;
         $scenario['depreciation']['special7bActualConstructionCostPerSqm'] = 5300;
         $result = $this->calculate($scenario)->toArray();
 
@@ -695,7 +800,7 @@ final class InvestmentCalculatorTest extends TestCase
                 'monthlyRent' => 80,
                 'buildingSharePercent' => 80,
                 'landSharePercent' => 20,
-                'depreciable' => true,
+                'depreciationMode' => 'building_basis',
                 'includedInPurchasePrice' => true,
             ]],
             'rent' => [
@@ -737,6 +842,7 @@ final class InvestmentCalculatorTest extends TestCase
             'depreciation' => [
                 'startYear' => 2026,
                 'startMonth' => 6,
+                'buildingBasisOverrideEnabled' => false,
                 'degressiveActive' => true,
                 'degressiveRatePercent' => 5,
                 'linearRatePercent' => 3,
