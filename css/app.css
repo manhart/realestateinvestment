@@ -469,10 +469,12 @@ body {
 }
 
 .rei-repeater-row .rei-check-field {
-    flex: 0 0 70px;
-    align-self: stretch;
+    flex: 1 1 190px;
+    min-width: 180px;
+    align-self: end;
     display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) auto;
+    grid-template-columns: 36px max-content auto;
+    justify-content: start;
     align-content: end;
     align-items: center;
     gap: 4px 6px;
@@ -482,6 +484,14 @@ body {
 .rei-repeater-row[data-type="parking"] .rei-check-field[data-field="depreciable"] {
     flex-basis: 148px;
     justify-content: flex-start;
+}
+
+.rei-repeater-row[data-type="parking"] .rei-check-field {
+    flex-basis: 210px;
+}
+
+.rei-repeater-row[data-type="loan"] .rei-check-field {
+    flex-basis: 230px;
 }
 
 .rei-repeater-field {
@@ -545,6 +555,7 @@ body {
 
 .rei-repeater-row > .btn {
     flex: 0 0 90px;
+    min-width: 90px;
 }
 
 .rei-side {
