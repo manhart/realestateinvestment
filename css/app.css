@@ -236,6 +236,45 @@ body {
     padding-top: 28px;
 }
 
+.rei-check.form-switch {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 4px 7px;
+    align-items: center;
+    padding-top: 24px;
+    padding-left: 0;
+}
+
+.rei-check.form-switch .form-check-input,
+.rei-check-field.form-switch .form-check-input {
+    float: none;
+    margin: 0;
+}
+
+.rei-check.form-switch .form-check-label,
+.rei-check-field.form-switch .form-check-label {
+    min-width: 0;
+    justify-self: start;
+    color: #445064;
+    line-height: 1.25;
+}
+
+.rei-switch-note {
+    grid-column: 1 / -1;
+    color: #64748b;
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.rei-field-disabled {
+    opacity: 0.62;
+}
+
+.rei-field-disabled .form-control,
+.rei-field-disabled .form-select {
+    background-color: #f1f5f9;
+}
+
 .rei-field-label {
     display: inline-flex;
     align-items: center;
@@ -432,10 +471,12 @@ body {
 .rei-repeater-row .rei-check-field {
     flex: 0 0 70px;
     align-self: stretch;
-    display: flex;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    align-content: end;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
+    gap: 4px 6px;
+    padding-left: 0;
 }
 
 .rei-repeater-row[data-type="parking"] .rei-check-field[data-field="depreciable"] {

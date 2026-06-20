@@ -9,6 +9,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.restoringDraft = false;
         this.calculateTimer = null;
         this.calculateSequence = 0;
+        this.controlId = 0;
         this.scenarioRows = [];
         this.special7bRules = [
             {from: '2018-09-01', until: '2022-01-01', constructionCostLimitPerSqm: 3000, specialAfaLimitPerSqm: 2000, ratePercent: 5, years: 4},
@@ -47,6 +48,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'sale.parkingAnnualValueIncreasePercent',
         ]);
         this.fieldHelpTexts = this.createFieldHelpTexts();
+        this.switchNotes = this.createSwitchNotes();
         this.lastResultSummary = {};
         this.form = this.element('[data-role="scenario-form"]');
         this.summary = this.element('[data-role="summary"]');
@@ -86,6 +88,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.syncSpecial7bDefaults(false);
         }
         this.updateTaxModeState();
+        this.updateDependentFieldStates();
         this.updateBuildingBasisOverrideState();
         this.syncSpecial7bCalculatedCosts();
         this.syncParkingValueIncreaseDefault(false);
@@ -199,6 +202,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.syncParkingValueIncreaseDefaultFromEvent(event.target);
             this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
+            this.updateDependentFieldStates();
             this.updateGuidanceState();
             this.saveDraft();
             this.scheduleCalculate();
@@ -212,6 +216,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.syncParkingValueIncreaseDefaultFromEvent(event.target);
             this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
+            this.updateDependentFieldStates();
             this.updateGuidanceState();
             this.saveDraft();
             this.calculate();
@@ -322,6 +327,18 @@ class GUI_InvestmentCalculator extends GUI_Module
         };
     }
 
+    createSwitchNotes()
+    {
+        return {
+            'acquisitionCosts.financingCostsDeductible': 'Steuert nur die steuerliche Behandlung von Pfandrecht/Kreditkosten.',
+            'depreciation.buildingBasisOverrideEnabled': 'Nur nutzen, wenn eine externe AfA-Basis vorliegt.',
+            'depreciation.special7bActive': 'Förderfähigkeit und Nachweis separat prüfen.',
+            'sale.taxFreeSale': '10-Jahres-Frist nach notariellem Kaufvertrag prüfen.',
+            'constructionInterest.deductible': 'Steuert nur die steuerliche Behandlung.',
+            'constructionInterest.financed': 'Darlehenssumme muss die Finanzierung abbilden.',
+        };
+    }
+
     enhanceFieldGuidance()
     {
         this.getRootElement().querySelectorAll('[data-path]').forEach(input => this.enhanceInputGuidance(input, input.dataset.path));
@@ -336,11 +353,28 @@ class GUI_InvestmentCalculator extends GUI_Module
 
         const anchor = container.matches('label') ? container : container.querySelector('label');
         if(anchor) {
-            this.appendFieldHelp(anchor, key, input);
+            if(!container.querySelector('.rei-info-button')) {
+                this.appendFieldHelp(anchor, key, input);
+            }
             this.appendAutoStatus(anchor, input);
+            this.appendSwitchNote(container, key, input);
         }
         this.appendFieldMeta(container, input);
         container.dataset.guidanceReady = key;
+    }
+
+    appendSwitchNote(container, key, input)
+    {
+        const text = this.switchNotes[key];
+        if(!text || input?.type !== 'checkbox' || container.querySelector(`[data-switch-note="${key}"]`)) {
+            return;
+        }
+
+        const note = document.createElement('small');
+        note.className = 'rei-switch-note';
+        note.dataset.switchNote = key;
+        note.textContent = text;
+        container.append(note);
     }
 
     appendFieldHelp(container, key, input = null)
@@ -584,7 +618,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['depreciationRatePercent', 'AfA %', 'number', data.depreciationRatePercent ?? 5.26],
             ['depreciationStartYear', 'AfA Startjahr', 'number', data.depreciationStartYear || defaultStartYear],
             ['depreciationStartMonth', 'AfA Startmonat', 'number', data.depreciationStartMonth || defaultStartMonth],
-            ['includedInPurchasePrice', 'im Kaufpreis', 'checkbox', data.includedInPurchasePrice ?? true],
+            ['includedInPurchasePrice', 'im Kaufpreis enthalten', 'checkbox', data.includedInPurchasePrice ?? true],
         ]);
         this.parkingList.append(row);
         this.updateRepeaterNames(this.parkingList, 'parkingUnits');
@@ -600,8 +634,8 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['label', 'Bezeichnung', 'text', data.label || 'Bauzeitzinsen'],
             ['year', 'Jahr', 'number', data.year || Number(this.value('property.purchaseYear') || 2026)],
             ['amount', 'Betrag', 'number', data.amount || 0],
-            ['deductible', 'Werbungskosten', 'checkbox', data.deductible ?? true],
-            ['financed', 'finanziert', 'checkbox', data.financed ?? false],
+            ['deductible', 'als Werbungskosten ansetzen', 'checkbox', data.deductible ?? true],
+            ['financed', 'mitfinanziert', 'checkbox', data.financed ?? false],
         ]);
         this.constructionInterestList.append(row);
         this.updateRepeaterNames(this.constructionInterestList, 'constructionInterest_yearlyEntries');
@@ -626,8 +660,8 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['specialRepaymentYear', 'Sondertilg. Jahr', 'number', data.specialRepaymentYear || 0],
             ['grantAmount', 'Tilgungszuschuss', 'number', data.grantAmount || 0],
             ['grantYear', 'Zuschuss Jahr', 'number', data.grantYear || 0],
-            ['constantAnnuity', 'Annuität konstant', 'checkbox', data.constantAnnuity ?? true],
-            ['redeemOnSale', 'Ablösung Verkauf', 'checkbox', data.redeemOnSale ?? true],
+            ['constantAnnuity', 'Annuität konstant halten', 'checkbox', data.constantAnnuity ?? true],
+            ['redeemOnSale', 'bei Verkauf ablösen', 'checkbox', data.redeemOnSale ?? true],
         ]);
         this.loanList.append(row);
         this.updateRepeaterNames(this.loanList, 'loans');
@@ -641,11 +675,13 @@ class GUI_InvestmentCalculator extends GUI_Module
         row.className = 'rei-repeater-row';
         row.dataset.type = type;
         fields.forEach(([field, label, inputType, value, options]) => {
-            const wrapper = document.createElement(inputType === 'segment' ? 'div' : 'label');
-            wrapper.textContent = label;
+            const wrapper = document.createElement(inputType === 'segment' || inputType === 'checkbox' ? 'div' : 'label');
+            if(inputType !== 'checkbox') {
+                wrapper.textContent = label;
+            }
             wrapper.dataset.field = field;
             if(inputType === 'checkbox') {
-                wrapper.className = 'rei-check-field';
+                wrapper.className = 'rei-check-field form-check form-switch';
             }
             if(type === 'parking' && field === 'depreciationMode') {
                 wrapper.title = 'in Gebäude-Basis: läuft mit der Gebäude-AfA. Linearer Gebäudesatz: separate AfA mit linearem Objektsatz. Eigener linearer Satz: separate AfA mit eigenem Prozentsatz.';
@@ -696,6 +732,16 @@ class GUI_InvestmentCalculator extends GUI_Module
             }
             if(inputType === 'checkbox') {
                 input.checked = Boolean(value);
+                input.id = this.nextControlId(`${type}-${field}`);
+                const checkboxLabel = document.createElement('label');
+                checkboxLabel.className = 'form-check-label';
+                checkboxLabel.htmlFor = input.id;
+                checkboxLabel.textContent = label;
+                wrapper.append(input, checkboxLabel);
+                this.appendFieldHelp(wrapper, `${type}.${field}`, input);
+                this.appendSwitchNote(wrapper, `${type}.${field}`, input);
+                row.append(wrapper);
+                return;
             } else {
                 input.value = value;
             }
@@ -726,6 +772,12 @@ class GUI_InvestmentCalculator extends GUI_Module
         });
         row.append(remove);
         return row;
+    }
+
+    nextControlId(prefix)
+    {
+        this.controlId += 1;
+        return `rei-${prefix}-${this.controlId}`.replace(/[^a-zA-Z0-9_-]/g, '-');
     }
 
     updateRepeaterNames(container, prefix)
@@ -1156,7 +1208,9 @@ class GUI_InvestmentCalculator extends GUI_Module
             return;
         }
 
-        input.readOnly = !this.buildingBasisOverrideEnabled();
+        const automatic = !this.buildingBasisOverrideEnabled();
+        input.readOnly = automatic;
+        this.setFieldContainerDisabled(input, automatic);
         this.syncBuildingBasisInput();
     }
 
@@ -1624,6 +1678,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateBuildingBasisOverrideState();
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
+        this.updateDependentFieldStates();
         this.syncParkingValueIncreaseDefault(this.getPath(scenario, 'sale.parkingAnnualValueIncreasePercent') === undefined);
         this.restoringDraft = false;
         this.updateGuidanceState();
@@ -1674,6 +1729,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateBuildingBasisOverrideState();
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
+        this.updateDependentFieldStates();
         this.restoringDraft = false;
         this.updateGuidanceState();
     }
@@ -1688,6 +1744,55 @@ class GUI_InvestmentCalculator extends GUI_Module
         const section32a = calculationMethod === 'section_32a';
         marginalRateInput.disabled = section32a;
         marginalRateInput.title = section32a ? 'Im §32a-Modus wird die Steuer über den Tarif berechnet.' : '';
+    }
+
+    updateDependentFieldStates()
+    {
+        const special7bActive = Boolean(this.value('depreciation.special7bActive'));
+        [
+            'depreciation.special7bApplicationDate',
+            'depreciation.special7bArea',
+            'depreciation.special7bConstructionCostLimitPerSqm',
+            'depreciation.special7bActualConstructionCostPerSqm',
+            'depreciation.special7bLimitPerSqm',
+            'depreciation.special7bRatePercent',
+            'depreciation.special7bYears',
+        ].forEach(path => this.setPathDisabled(path, !special7bActive));
+        this.setPathDisabled('depreciation.special7bBasis', !special7bActive, true);
+        this.setRoleDisabled('special7b-costs-per-sqm', !special7bActive, true);
+
+        const churchTaxActive = Boolean(this.value('tax.churchTax'));
+        this.setPathDisabled('tax.churchTaxState', !churchTaxActive);
+    }
+
+    setPathDisabled(path, disabled, keepReadonly = false)
+    {
+        const input = this.getRootElement().querySelector(`[data-path="${path}"]`);
+        if(!input) {
+            return;
+        }
+        if(!keepReadonly) {
+            input.disabled = disabled;
+        }
+        this.setFieldContainerDisabled(input, disabled);
+    }
+
+    setRoleDisabled(role, disabled, keepReadonly = false)
+    {
+        const input = this.getRootElement().querySelector(`[data-role="${role}"]`);
+        if(!input) {
+            return;
+        }
+        if(!keepReadonly) {
+            input.disabled = disabled;
+        }
+        this.setFieldContainerDisabled(input, disabled);
+    }
+
+    setFieldContainerDisabled(input, disabled)
+    {
+        const container = input.closest('label') || input.closest('[class*="col-"]') || input.parentElement;
+        container?.classList.toggle('rei-field-disabled', disabled);
     }
 
     newScenarioDefaults()

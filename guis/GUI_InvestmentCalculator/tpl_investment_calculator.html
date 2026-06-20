@@ -121,8 +121,8 @@
                     <label class="col-md-2">Grund %<input class="form-control" type="number" step="0.01" data-path="property.landSharePercent" value="20"></label>
                     <label class="col-md-2">Gebäude %<input class="form-control" type="number" step="0.01" data-path="property.buildingSharePercent" value="80"></label>
                     <label class="col-md-2">Energieklasse<input class="form-control" data-path="property.energyClass"></label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="property.newBuilding" checked> Neubau</label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="property.furnished"> Möbliert</label>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-new-building" class="form-check-input" type="checkbox" data-path="property.newBuilding" checked><label class="form-check-label" for="rei-new-building">Neubau</label></div>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-furnished" class="form-check-input" type="checkbox" data-path="property.furnished"><label class="form-check-label" for="rei-furnished">Möbliert</label></div>
                 </div>
                 </div>
             </div>
@@ -184,7 +184,7 @@
                             <option value="immediate_deductible">sofortige Werbungskosten im Kaufjahr</option>
                         </select>
                     </label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="acquisitionCosts.financingCostsDeductible" checked> Pfandrecht/Kreditkosten WK <a class="rei-source-link" href="https://www.gesetze-im-internet.de/estg/__9.html" target="_blank" rel="noopener" title="§ 9 EStG">↗</a></label>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-financing-costs-deductible" class="form-check-input" type="checkbox" data-path="acquisitionCosts.financingCostsDeductible" checked><label class="form-check-label" for="rei-financing-costs-deductible">Kreditkosten steuerlich ansetzen <a class="rei-source-link" href="https://www.gesetze-im-internet.de/estg/__9.html" target="_blank" rel="noopener" title="§ 9 EStG">↗</a></label></div>
                 </div>
                 <div class="rei-subsection-head">
                     <h3>Bauzeitzinsen je Jahr</h3>
@@ -237,12 +237,12 @@
                         </label>
                         <input id="rei-building-basis" class="form-control" type="number" step="0.01" data-path="depreciation.buildingBasis" data-role="building-basis-input" value="0" readonly>
                     </div>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.buildingBasisOverrideEnabled" data-role="building-basis-override"> Gebäude-Basis manuell</label>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-building-basis-override" class="form-check-input" type="checkbox" data-path="depreciation.buildingBasisOverrideEnabled" data-role="building-basis-override"><label class="form-check-label" for="rei-building-basis-override">Gebäude-Basis überschreiben</label></div>
                     <label class="col-md-2">degressiv %<input class="form-control" type="number" step="0.01" data-path="depreciation.degressiveRatePercent" value="5"></label>
                     <label class="col-md-2">linear %<input class="form-control" type="number" step="0.01" data-path="depreciation.linearRatePercent" value="3"></label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.degressiveActive" checked> degressiv</label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.autoSwitchToLinear" checked> Wechsel linear</label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="depreciation.special7bActive"> §7b <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/esth/2024/A-Einkommensteuergesetz/II-Einkommen-2-24b/3-Gewinn-4-7i/Paragraf-7b/inhalt.html" target="_blank" rel="noopener" title="EStH § 7b">↗</a></label>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-degressive-active" class="form-check-input" type="checkbox" data-path="depreciation.degressiveActive" checked><label class="form-check-label" for="rei-degressive-active">degressive AfA anwenden</label></div>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-auto-switch-linear" class="form-check-input" type="checkbox" data-path="depreciation.autoSwitchToLinear" checked><label class="form-check-label" for="rei-auto-switch-linear">Wechsel zur linearen AfA</label></div>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-special7b-active" class="form-check-input" type="checkbox" data-path="depreciation.special7bActive"><label class="form-check-label" for="rei-special7b-active">Sonder-AfA §7b anwenden <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/esth/2024/A-Einkommensteuergesetz/II-Einkommen-2-24b/3-Gewinn-4-7i/Paragraf-7b/inhalt.html" target="_blank" rel="noopener" title="EStH § 7b">↗</a></label></div>
                     <input type="hidden" data-path="depreciation.special7bReducesBookValueImmediately" value="false">
                     <label class="col-md-2">§7b Bauantrag<input class="form-control" type="date" data-path="depreciation.special7bApplicationDate" value=""></label>
                     <label class="col-md-2">§7b Fläche m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bArea" value="0"></label>
@@ -262,7 +262,7 @@
                     <label class="col-md-2">Veranlagung<select class="form-select" data-path="tax.assessmentType"><option value="single">Einzel</option><option value="splitting">Splitting</option></select></label>
                     <label class="col-md-2">Steuerjahr<select class="form-select" data-path="tax.taxYear"><option value="2026" selected>2026</option><option value="2025">2025</option></select></label>
                     <div class="col-md-2 rei-check">Soli automatisch <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/lsth/2026/B-Anhaenge/Anhang-27/I/inhalt.html" target="_blank" rel="noopener" title="SolzG 2026">↗</a></div>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="tax.churchTax"> Kirchensteuer <a class="rei-source-link" href="https://www.kirchensteuer-wirkt.de/hoehe-kirchensteuer" target="_blank" rel="noopener" title="Kirchensteuer">↗</a></label>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-church-tax" class="form-check-input" type="checkbox" data-path="tax.churchTax"><label class="form-check-label" for="rei-church-tax">Kirchensteuer berücksichtigen <a class="rei-source-link" href="https://www.kirchensteuer-wirkt.de/hoehe-kirchensteuer" target="_blank" rel="noopener" title="Kirchensteuer">↗</a></label></div>
                     <label class="col-md-3">Kirchensteuer-Land<select class="form-select" data-path="tax.churchTaxState"><option value="BY">Bayern (8 %)</option><option value="BW">Baden-Württemberg (8 %)</option><option value="BE">Berlin (9 %)</option><option value="BB">Brandenburg (9 %)</option><option value="HB">Bremen (9 %)</option><option value="HH">Hamburg (9 %)</option><option value="HE">Hessen (9 %)</option><option value="MV">Mecklenburg-Vorpommern (9 %)</option><option value="NI">Niedersachsen (9 %)</option><option value="NW">Nordrhein-Westfalen (9 %)</option><option value="RP">Rheinland-Pfalz (9 %)</option><option value="SL">Saarland (9 %)</option><option value="SN">Sachsen (9 %)</option><option value="ST">Sachsen-Anhalt (9 %)</option><option value="SH">Schleswig-Holstein (9 %)</option><option value="TH">Thüringen (9 %)</option></select></label>
                     <label class="col-md-2">Wertsteigerung %<input class="form-control" type="number" step="0.01" data-path="sale.annualValueIncreasePercent" value="2"></label>
                     <div class="col-md-2">
@@ -271,13 +271,13 @@
                         </label>
                         <input id="rei-parking-value-increase" class="form-control" type="number" step="0.01" data-path="sale.parkingAnnualValueIncreasePercent" value="2">
                     </div>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="sale.includeParkingInSalePrice" checked> Stellplätze im Verkaufswert
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-include-parking-sale" class="form-check-input" type="checkbox" data-path="sale.includeParkingInSalePrice" checked><label class="form-check-label" for="rei-include-parking-sale">Stellplätze im Verkaufswert</label>
                         <button class="rei-info-button" type="button" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top" data-bs-content="Aktiv: enthaltene Stellplätze/Garagen erhöhen den Verkaufspreis. Inaktiv: Stellplätze bleiben in Kosten, Miete und AfA erhalten, werden aber im Endverkauf nicht bewertet." aria-label="Info zum Stellplatz-Verkaufswert"><i class="bi bi-info-circle"></i></button>
-                    </label>
+                    </div>
                     <label class="col-md-2">Verkaufskosten %<input class="form-control" type="number" step="0.01" data-path="sale.sellingCostsPercent" value="1"></label>
                     <label class="col-md-3">Vorfälligkeit<input class="form-control" type="number" step="0.01" data-path="sale.prepaymentPenaltyAmount" value="0"></label>
                     <label class="col-md-2">Diskontsatz %<input class="form-control" type="number" step="0.01" data-path="settings.discountRatePercent" value="5"></label>
-                    <label class="col-md-2 rei-check"><input class="form-check-input" type="checkbox" data-path="sale.taxFreeSale" checked> steuerfrei</label>
+                    <div class="col-md-2 rei-check form-check form-switch"><input id="rei-tax-free-sale" class="form-check-input" type="checkbox" data-path="sale.taxFreeSale" checked><label class="form-check-label" for="rei-tax-free-sale">Verkauf steuerfrei behandeln</label></div>
                     <div class="col-md-12">
                         <div class="rei-inline-note">
                             Für die 10-Jahres-Frist nach <a href="https://www.gesetze-im-internet.de/estg/__23.html" target="_blank" rel="noopener">§ 23 EStG</a> ist grundsätzlich das Datum des bindenden notariellen Kaufvertrags maßgeblich, nicht Fertigstellung, Übergabe oder Mietbeginn. Die Annahme „steuerfrei“ sollte daran geprüft werden.
