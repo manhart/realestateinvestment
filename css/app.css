@@ -215,6 +215,20 @@ body {
     margin-top: 4px;
 }
 
+.rei-field-meta {
+    display: block;
+    min-height: 16px;
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.rei-field-meta[hidden] {
+    display: none;
+}
+
 .rei-check {
     display: flex;
     align-items: center;
@@ -248,6 +262,52 @@ body {
     color: #1d4ed8;
 }
 
+.rei-auto-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    margin-left: 2px;
+    padding: 0 6px;
+    border: 1px solid #bfdbfe;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.rei-auto-badge--manual {
+    border-color: #fed7aa;
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+.rei-reset-auto {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    margin-left: 2px;
+    border: 0;
+    background: transparent;
+    color: #2563eb;
+    font-size: 0.72rem;
+    line-height: 1;
+    padding: 0 2px;
+    text-decoration: underline;
+}
+
+.rei-reset-auto:hover,
+.rei-reset-auto:focus {
+    color: #1e40af;
+}
+
+.rei-reset-auto[hidden] {
+    display: none;
+}
+
 .rei-inline-note {
     background: #f8fafc;
     border: 1px solid #d9e2ef;
@@ -257,6 +317,10 @@ body {
     font-size: 0.82rem;
     line-height: 1.35;
     padding: 8px 10px;
+}
+
+.rei-inline-note--compact {
+    padding: 6px 9px;
 }
 
 .rei-inline-note a {

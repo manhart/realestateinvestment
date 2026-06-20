@@ -33,6 +33,21 @@ class GUI_InvestmentCalculator extends GUI_Module
             'depreciation.special7bLimitPerSqm',
             'depreciation.special7bActualConstructionCostPerSqm',
         ];
+        this.autoManagedPaths = new Set([
+            'depreciation.startYear',
+            'depreciation.startMonth',
+            'depreciation.buildingBasis',
+            'depreciation.special7bApplicationDate',
+            'depreciation.special7bArea',
+            'depreciation.special7bConstructionCostLimitPerSqm',
+            'depreciation.special7bLimitPerSqm',
+            'depreciation.special7bBasis',
+            'depreciation.special7bRatePercent',
+            'depreciation.special7bYears',
+            'sale.parkingAnnualValueIncreasePercent',
+        ]);
+        this.fieldHelpTexts = this.createFieldHelpTexts();
+        this.lastResultSummary = {};
         this.form = this.element('[data-role="scenario-form"]');
         this.summary = this.element('[data-role="summary"]');
         this.purchaseBreakdown = this.element('[data-role="purchase-breakdown"]');
@@ -57,8 +72,9 @@ class GUI_InvestmentCalculator extends GUI_Module
 
         this.initTables();
         this.bindControls();
-        this.initInfoPopovers();
         this.prepareStaticInputs();
+        this.enhanceFieldGuidance();
+        this.initInfoPopovers();
         this.initSectionToggles();
         this.resetStaticInputs();
         const draft = this.loadDraft();
@@ -73,6 +89,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateBuildingBasisOverrideState();
         this.syncSpecial7bCalculatedCosts();
         this.syncParkingValueIncreaseDefault(false);
+        this.updateGuidanceState();
         this.calculate();
         this.refreshScenarioList().then(() => this.importSharedScenarioFromUrl());
     }
@@ -175,23 +192,27 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('paste', event => this.normalizeIntegerInputSoon(event.target));
         this.getRootElement().addEventListener('input', event => {
             this.normalizeIntegerInput(event.target, false);
+            this.markAutoFieldManualFromEvent(event.target);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
             this.syncBuildingBasisFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, false);
             this.syncParkingValueIncreaseDefaultFromEvent(event.target);
             this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
+            this.updateGuidanceState();
             this.saveDraft();
             this.scheduleCalculate();
         });
         this.getRootElement().addEventListener('change', event => {
             this.normalizeIntegerInput(event.target, true);
+            this.markAutoFieldManualFromEvent(event.target);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
             this.syncBuildingBasisFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, true);
             this.syncParkingValueIncreaseDefaultFromEvent(event.target);
             this.updateParkingDepreciationControlsFromEvent(event.target);
             this.updateTaxModeState();
+            this.updateGuidanceState();
             this.saveDraft();
             this.calculate();
         });
@@ -202,7 +223,200 @@ class GUI_InvestmentCalculator extends GUI_Module
         if(!window.bootstrap?.Popover) {
             return;
         }
-        this.getRootElement().querySelectorAll('[data-bs-toggle="popover"]').forEach(element => new window.bootstrap.Popover(element));
+        this.getRootElement().querySelectorAll('[data-bs-toggle="popover"]').forEach(element => this.initPopover(element));
+    }
+
+    initPopover(element)
+    {
+        if(!window.bootstrap?.Popover || element.dataset.popoverReady === 'true') {
+            return;
+        }
+        new window.bootstrap.Popover(element);
+        element.dataset.popoverReady = 'true';
+    }
+
+    createFieldHelpTexts()
+    {
+        return {
+            'property.livingArea': 'Die Wohnfläche wird für Mietkennzahlen und die §7b-Obergrenze je Quadratmeter verwendet.',
+            'property.apartmentPurchasePrice': 'Kaufpreis der Wohnung ohne separat erfasste Stellplätze und ohne Küche/Möbel.',
+            'property.otherPurchasePrice': 'Weitere kaufpreisrelevante Bestandteile, die wie die Wohnung in Grund- und Gebäudeanteil aufgeteilt werden.',
+            'property.furniturePurchasePrice': 'Küche oder Möbel werden separat behandelt, weil sie meist nicht in die Gebäude-AfA gehören.',
+            'property.landSharePercent': 'Grund und Boden ist nicht abschreibbar. Dieser Anteil mindert die Gebäude-AfA-Basis.',
+            'property.buildingSharePercent': 'Der Gebäudeanteil ist die Basis für die normale Gebäude-AfA, ergänzt um anteilige AfA-relevante Nebenkosten.',
+            'rent.apartmentMonthlyRent': 'Monatliche Nettokaltmiete der Wohnung ohne Stellplätze und ohne umlagefähige Nebenkosten.',
+            'rent.annualIncreasePercent': 'Annahme, wie stark die Miete im Zeitverlauf steigt. Sie beeinflusst Einnahmen, Cashflow und Verkaufskennzahlen indirekt.',
+            'rent.increaseEveryYears': 'Legt fest, ob die Mietsteigerung jährlich oder nur alle x Jahre angewendet wird.',
+            'rent.vacancyPercent': 'Sicherheitsabschlag für Leerstand oder Mietausfall. Er reduziert die angesetzte Jahresmiete.',
+            'rent.otherAnnualIncome': 'Sonstige jährliche Einnahmen, die zusätzlich zur Miete angesetzt werden.',
+            'expenses.nonRecoverableHausgeldMonthly': 'Nicht umlagefähige laufende Eigentümerkosten. Sie belasten Liquidität und sind in der Regel steuerlich relevant.',
+            'expenses.maintenanceReserveMonthly': 'Rücklagen sind liquiditätswirksam. Steuerlich hängt die Behandlung vom konkreten Zahlungsfluss und Nachweis ab.',
+            'expenses.managementMonthly': 'Verwalterkosten sind laufende Kosten und werden in der VuV-Rechnung als abzugsfähige laufende Kosten berücksichtigt.',
+            'expenses.servicePoolMonthly': 'Sonstige laufende vermietungsbezogene Kosten, z. B. Servicepool oder Betreuung.',
+            'expenses.furnitureReserveMonthly': 'Liquiditätsrücklage für Möbel/Küche. Das ist keine AfA, sondern ein laufender Cashflow-Ansatz.',
+            'expenses.otherMonthlyCosts': 'Weitere laufende Kosten, die monatlich in Cashflow und Werbungskostenlogik einfließen.',
+            'expenses.annualIncreasePercent': 'Annahme, wie stark laufende Kosten im Zeitverlauf steigen.',
+            'acquisitionCosts.realEstateTransferTaxPercent': 'Grunderwerbsteuer auf den steuerpflichtigen Immobilienkaufpreis. Möbel/Küche sind separat zu prüfen.',
+            'acquisitionCosts.notaryPercent': 'Notarkosten in Prozent vom Kaufpreis. Je nach steuerlicher Auswahl sofortige Werbungskosten oder AfA-relevante Nebenkosten.',
+            'acquisitionCosts.landRegisterPurchasePercent': 'Grundbuchkosten für den Kauf. Die steuerliche Behandlung folgt der Auswahl Notar/Grundbuch steuerlich.',
+            'acquisitionCosts.landRegisterLienPercent': 'Kosten für Eintragung des Grundpfandrechts, berechnet auf die Darlehenssumme.',
+            'acquisitionCosts.brokerPercent': 'Maklerkosten in Prozent vom Kaufpreis. Im Modell werden sie als Erwerbsnebenkosten berücksichtigt.',
+            'acquisitionCosts.otherAcquisitionCosts': 'Weitere einmalige Erwerbsnebenkosten, die nicht in den Prozentfeldern enthalten sind.',
+            'acquisitionCosts.otherFinancingCosts': 'Einmalige Kreditkosten außerhalb des Pfandrechts, z. B. Bankgebühren.',
+            'acquisitionCosts.notaryLandRegisterTaxTreatment': 'Steuert, ob Notar/Grundbuch sofort als Werbungskosten oder über die AfA-Basis berücksichtigt werden.',
+            'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz von Pfandrecht und sonstigen Kreditkosten als Werbungskosten.',
+            'settings.initialEquityAmount': 'Vom Anleger zu Beginn eingebrachtes Eigenkapital. Es wird nicht automatisch aus Bauzeitzinsen oder negativen Cashflows erhöht.',
+            'settings.autoSpecialRepaymentMode': 'Optional können positive echte Cashflows zur Sondertilgung genutzt werden. Opportunitätszinsen sind keine verfügbare Liquidität.',
+            'settings.discountRatePercent': 'Vergleichsrendite für Barwert und Future Value. Sie ändert nicht den nominalen Netto-Vermögenseffekt.',
+            'depreciation.startYear': 'Startjahr der normalen AfA. Bei Neubau wird es automatisch aus der Fertigstellung vorbelegt.',
+            'depreciation.startMonth': 'Startmonat der normalen AfA. Die normale Gebäude-AfA wird monatsgenau gerechnet.',
+            'depreciation.buildingBasis': 'Automatisch berechnete Gebäude-AfA-Basis aus Gebäudeanteil und AfA-relevanten Nebenkosten.',
+            'depreciation.buildingBasisOverrideEnabled': 'Nur aktivieren, wenn ein Anbieter oder Steuerberater eine abweichende AfA-Basis vorgibt.',
+            'depreciation.degressiveRatePercent': 'Satz der degressiven Gebäude-AfA. Bei Neubau aktuell häufig 5 %, sofern Voraussetzungen erfüllt sind.',
+            'depreciation.linearRatePercent': 'Linearer AfA-Satz für die Vergleichs- oder Anschlussrechnung.',
+            'depreciation.degressiveActive': 'Aktiviert die degressive AfA statt nur linearer AfA.',
+            'depreciation.autoSwitchToLinear': 'Wechselt automatisch zur linearen AfA, sobald diese günstiger ist.',
+            'depreciation.special7bActive': 'Aktiviert die Sonder-AfA nach §7b. Förderfähigkeit und Nachweise müssen im Einzelfall geprüft werden.',
+            'depreciation.special7bApplicationDate': 'Datum für die Auswahl der §7b-Regel. Vorbelegt aus dem Kaufdatum, falls kein Bauantragsdatum bekannt ist.',
+            'depreciation.special7bArea': 'Fläche, mit der die §7b-Förderhöchstgrenze je m² multipliziert wird.',
+            'depreciation.special7bConstructionCostLimitPerSqm': 'Baukostenobergrenze je m². Sie entscheidet, ob die Wohnung dem Grunde nach förderfähig sein kann.',
+            'depreciation.special7bActualConstructionCostPerSqm': 'Optionaler Prüfwert der tatsächlichen Baukosten je m². Wenn unbekannt, bei 0 lassen.',
+            'depreciation.special7bLimitPerSqm': 'Maximale §7b-Bemessungsgrundlage je m². Dieser Wert kappt die Sonder-AfA-Basis.',
+            'depreciation.special7bBasis': 'Berechnete §7b-Bemessungsgrundlage nach Kappung. Sie ist readonly, damit Formel und Eingaben konsistent bleiben.',
+            'depreciation.special7bRatePercent': 'Jährlicher Sonder-AfA-Satz für die §7b-Bemessungsgrundlage.',
+            'depreciation.special7bYears': 'Anzahl der Jahre, in denen die Sonder-AfA angesetzt wird.',
+            'depreciation.furnitureBasis': 'Bemessungsgrundlage für separat abschreibbare Möbel oder Küche.',
+            'depreciation.furnitureRatePercent': 'AfA-Satz für Möbel/Küche. Diese AfA läuft getrennt von der Gebäude-AfA.',
+            'tax.calculationMethod': 'Grenzsteuersatz ist eine Vereinfachung. §32a rechnet mit Einkommensteuertarif, Soli und optional Kirchensteuer.',
+            'tax.taxableIncomeBeforeInvestment': 'Zu versteuerndes Einkommen vor der Immobilie. Es ist die Basis für die Steuerwirkung.',
+            'tax.taxableIncomeAnnualIncreasePercent': 'Jährliche Steigerung des sonstigen zu versteuernden Einkommens.',
+            'tax.marginalTaxRatePercent': 'Vereinfachter Grenzsteuersatz für die schnelle Steuerwirkung, wenn nicht §32a verwendet wird.',
+            'tax.assessmentType': 'Einzel- oder Splittingtabelle für die Einkommensteuerberechnung nach §32a.',
+            'tax.taxYear': 'Tarifjahr für die Einkommensteuerberechnung.',
+            'tax.churchTax': 'Nur aktivieren, wenn Kirchensteuerpflicht besteht. Das Bundesland bestimmt den Satz.',
+            'tax.churchTaxState': 'Bundesland für den Kirchensteuersatz, unabhängig vom Objektstandort.',
+            'sale.annualValueIncreasePercent': 'Annahme für die Wertentwicklung der Immobilie bis zum Verkaufsjahr.',
+            'sale.parkingAnnualValueIncreasePercent': 'Eigene Wertsteigerung für Stellplätze. Standardmäßig wird der Objektsatz übernommen.',
+            'sale.includeParkingInSalePrice': 'Steuert, ob Stellplätze im Verkaufspreis bewertet werden.',
+            'sale.sellingCostsPercent': 'Verkaufskosten als Prozent vom Verkaufspreis, z. B. Makler oder Abwicklungskosten.',
+            'sale.prepaymentPenaltyAmount': 'Optionale Vorfälligkeitsentschädigung im Verkaufsjahr.',
+            'sale.taxFreeSale': 'Modellannahme für steuerfreien Verkauf. Für die 10-Jahres-Frist zählt grundsätzlich der notarielle Kaufvertrag.',
+            'parking.label': 'Interne Bezeichnung des Stellplatzes, z. B. SP 12.',
+            'parking.purchasePrice': 'Kaufpreis des Stellplatzes. Er kann in Kaufpreis, AfA und Verkaufswert einfließen.',
+            'parking.monthlyRent': 'Monatliche Nettokaltmiete des Stellplatzes.',
+            'parking.buildingSharePercent': 'Gebäudeanteil des Stellplatzes für AfA und Kaufpreisaufteilung.',
+            'parking.landSharePercent': 'Nicht abschreibbarer Grundstücksanteil des Stellplatzes.',
+            'parking.depreciationMode': 'Legt fest, ob der Stellplatz in der Gebäude-AfA steckt oder separat linear abgeschrieben wird.',
+            'parking.depreciationRatePercent': 'Nur bei eigenem linearem Satz editierbar.',
+            'parking.includedInPurchasePrice': 'Aktiv, wenn der Stellplatz zum Gesamt-Kaufpreis und Verkaufspreis gehören soll.',
+            'constructionInterest.year': 'Jahr, in dem die Bauzeitzinsen anfallen.',
+            'constructionInterest.amount': 'Bauzeitzinsen dieses Jahres als Bruttobetrag.',
+            'constructionInterest.deductible': 'Steuert nur den steuerlichen Werbungskostenansatz.',
+            'constructionInterest.financed': 'Aktiv: kein direkter Cash-Abfluss; die Finanzierung muss im Kreditmodul abgebildet sein.',
+            'loan.principal': 'Darlehensbetrag dieses Kreditmoduls.',
+            'loan.interestRatePercent': 'Sollzins p.a. für die Zinsberechnung.',
+            'loan.initialRepaymentPercent': 'Tilgungssatz zu Beginn, solange keine tilgungsfreie Zeit greift.',
+            'loan.interestOnlyYears': 'In dieser Zeit werden nur Zinsen gezahlt; die Tilgung startet danach.',
+            'loan.repaymentRateAfterInterestOnlyPercent': 'Tilgungssatz nach Ablauf der tilgungsfreien Zeit.',
+            'loan.constantAnnuity': 'Aktiv: die Jahresrate bleibt grundsätzlich konstant und der Tilgungsanteil steigt mit sinkender Restschuld.',
+        };
+    }
+
+    enhanceFieldGuidance()
+    {
+        this.getRootElement().querySelectorAll('[data-path]').forEach(input => this.enhanceInputGuidance(input, input.dataset.path));
+    }
+
+    enhanceInputGuidance(input, key)
+    {
+        const container = input.closest('label') || input.closest('[class*="col-"]') || input.parentElement;
+        if(!container || container.dataset.guidanceReady === key) {
+            return;
+        }
+
+        const anchor = container.matches('label') ? container : container.querySelector('label');
+        if(anchor) {
+            this.appendFieldHelp(anchor, key, input);
+            this.appendAutoStatus(anchor, input);
+        }
+        this.appendFieldMeta(container, input);
+        container.dataset.guidanceReady = key;
+    }
+
+    appendFieldHelp(container, key, input = null)
+    {
+        const text = this.fieldHelpTexts[key];
+        if(!text || container.querySelector(`[data-help-button="${key}"]`) || container.querySelector('.rei-info-button')) {
+            return;
+        }
+
+        const button = this.createInfoButton(text, `Info zu ${container.textContent.trim() || key}`);
+        button.dataset.helpButton = key;
+        const before = input || container.querySelector('input, select');
+        if(before && before.parentElement === container && !['checkbox', 'radio'].includes(before.type)) {
+            container.insertBefore(button, before);
+        } else {
+            container.append(button);
+        }
+        this.initPopover(button);
+    }
+
+    appendAutoStatus(container, input)
+    {
+        const path = input?.dataset?.path;
+        if(!this.autoManagedPaths.has(path) || container.querySelector(`[data-auto-status="${path}"]`)) {
+            return;
+        }
+
+        const badge = document.createElement('span');
+        badge.className = 'rei-auto-badge';
+        badge.dataset.autoStatus = path;
+        badge.textContent = 'auto';
+
+        const reset = document.createElement('button');
+        reset.className = 'rei-reset-auto';
+        reset.type = 'button';
+        reset.dataset.resetAuto = path;
+        reset.textContent = 'zurück auf auto';
+        reset.addEventListener('click', event => {
+            event.preventDefault();
+            this.resetAutoField(path);
+        });
+
+        const before = input || container.querySelector('input, select');
+        if(before && before.parentElement === container) {
+            container.insertBefore(badge, before);
+            container.insertBefore(reset, before);
+        } else {
+            container.append(badge, reset);
+        }
+    }
+
+    appendFieldMeta(container, input)
+    {
+        const path = input?.dataset?.path;
+        if(!path || ['hidden', 'checkbox', 'radio'].includes(input.type) || container.querySelector(`[data-meta-for="${path}"]`)) {
+            return;
+        }
+
+        const meta = document.createElement('small');
+        meta.className = 'rei-field-meta';
+        meta.dataset.metaFor = path;
+        input.insertAdjacentElement('afterend', meta);
+    }
+
+    createInfoButton(text, label)
+    {
+        const button = document.createElement('button');
+        button.className = 'rei-info-button';
+        button.type = 'button';
+        button.dataset.bsToggle = 'popover';
+        button.dataset.bsTrigger = 'focus';
+        button.dataset.bsPlacement = 'top';
+        button.dataset.bsContent = text;
+        button.setAttribute('aria-label', label);
+        button.innerHTML = '<i class="bi bi-info-circle"></i>';
+        return button;
     }
 
     initWorkspaceKey()
@@ -376,6 +590,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateRepeaterNames(this.parkingList, 'parkingUnits');
         this.updateParkingDepreciationRateState(row);
         this.syncSpecial7bCalculatedCosts();
+        this.updateGuidanceState();
         this.saveDraft();
     }
 
@@ -390,6 +605,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         ]);
         this.constructionInterestList.append(row);
         this.updateRepeaterNames(this.constructionInterestList, 'constructionInterest_yearlyEntries');
+        this.updateGuidanceState();
         this.saveDraft();
     }
 
@@ -415,6 +631,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         ]);
         this.loanList.append(row);
         this.updateRepeaterNames(this.loanList, 'loans');
+        this.updateGuidanceState();
         this.saveDraft();
     }
 
@@ -435,6 +652,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             }
             if(inputType === 'segment') {
                 wrapper.className = 'rei-repeater-field';
+                this.appendFieldHelp(wrapper, `${type}.${field}`);
                 const group = document.createElement('div');
                 group.className = 'rei-segment';
                 (options || []).forEach(([optionValue, optionLabel]) => {
@@ -482,6 +700,7 @@ class GUI_InvestmentCalculator extends GUI_Module
                 input.value = value;
             }
             wrapper.append(input);
+            this.appendFieldHelp(wrapper, `${type}.${field}`, input);
             row.append(wrapper);
         });
         const remove = document.createElement('button');
@@ -501,6 +720,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             if(container === this.loanList) {
                 this.updateRepeaterNames(this.loanList, 'loans');
             }
+            this.updateGuidanceState();
             this.saveDraft();
             this.calculate();
         });
@@ -593,6 +813,311 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         window.clearTimeout(this.calculateTimer);
         this.calculateTimer = window.setTimeout(() => this.calculate(), 250);
+    }
+
+    markAutoFieldManualFromEvent(input)
+    {
+        const path = input?.dataset?.path;
+        if(!path || !this.autoManagedPaths.has(path) || input.readOnly || input.type === 'hidden') {
+            return;
+        }
+        input.dataset.autoValue = 'false';
+    }
+
+    updateGuidanceState()
+    {
+        this.updateInlineFieldMeta();
+        this.updateAutoStatusBadges();
+    }
+
+    resetAutoField(path)
+    {
+        const input = this.getRootElement().querySelector(`[data-path="${path}"]`);
+        if(input) {
+            input.dataset.autoValue = 'true';
+        }
+
+        if(['depreciation.startYear', 'depreciation.startMonth'].includes(path)) {
+            this.syncDepreciationStartDefaults(true);
+        } else if(path === 'depreciation.buildingBasis') {
+            const override = this.getRootElement().querySelector('[data-role="building-basis-override"]');
+            if(override) {
+                override.checked = false;
+            }
+            this.updateBuildingBasisOverrideState();
+        } else if(path === 'depreciation.special7bApplicationDate') {
+            this.syncSpecial7bApplicationDate(true);
+            this.syncSpecial7bRuleDefaults(false);
+        } else if(path === 'depreciation.special7bArea') {
+            this.syncSpecial7bArea(true);
+        } else if(['depreciation.special7bConstructionCostLimitPerSqm', 'depreciation.special7bLimitPerSqm', 'depreciation.special7bRatePercent', 'depreciation.special7bYears'].includes(path)) {
+            this.syncSpecial7bRuleDefaults(true);
+        } else if(path === 'sale.parkingAnnualValueIncreasePercent') {
+            this.syncParkingValueIncreaseDefault(true);
+        }
+
+        this.syncSpecial7bCalculatedCosts();
+        this.updateGuidanceState();
+        this.saveDraft();
+        this.calculate();
+    }
+
+    updateInlineFieldMeta()
+    {
+        const values = this.currentInputOverview();
+        const metas = {
+            'property.livingArea': values.livingArea > 0 && values.apartment > 0
+                ? `Kaufpreis Wohnung je m²: ${this.eur(values.apartment / values.livingArea)}`
+                : '',
+            'property.apartmentPurchasePrice': `Kaufpreis inkl. Stellplätze/Küche/Sonstiges: ${this.eur(values.purchaseTotal)}`,
+            'property.otherPurchasePrice': values.other > 0 ? `wird mit Grund/Gebäude aufgeteilt: ${this.eur(values.other)}` : 'optional; 0 €, wenn nicht separat vorhanden',
+            'property.furniturePurchasePrice': values.furniture > 0 ? `separate Möbel/Küche-Basis: ${this.eur(values.furniture)}` : 'bei 0 keine separate Möbel/Küche-AfA',
+            'property.landSharePercent': `Grundstückskosten: ${this.eur(values.landCosts)}`,
+            'property.buildingSharePercent': `Herstellungskosten/Gebäude: ${this.eur(values.buildingCosts)}`,
+            'rent.apartmentMonthlyRent': `Wohnung p.a.: ${this.eur(values.apartmentAnnualRent)} · inkl. Stellplätze p.a.: ${this.eur(values.totalAnnualRent)}`,
+            'rent.annualIncreasePercent': `erste Steigerung: ${this.percentInput(values.rentIncrease)} alle ${Math.max(values.rentIncreaseEveryYears, 1)} Jahr(e)`,
+            'rent.increaseEveryYears': `Mietsteigerung wird alle ${Math.max(values.rentIncreaseEveryYears, 1)} Jahr(e) angewendet`,
+            'rent.vacancyPercent': `Abschlag auf Jahresmiete: ${this.eur(values.totalAnnualRent * values.vacancyRate)}`,
+            'expenses.nonRecoverableHausgeldMonthly': `laufende Ausgaben gesamt p.a.: ${this.eur(values.expenseAnnualTotal)}`,
+            'expenses.maintenanceReserveMonthly': `p.a.: ${this.eur(values.maintenanceMonthly * 12)}`,
+            'expenses.managementMonthly': `p.a.: ${this.eur(values.managementMonthly * 12)}`,
+            'expenses.servicePoolMonthly': `p.a.: ${this.eur(values.serviceMonthly * 12)}`,
+            'expenses.furnitureReserveMonthly': `p.a.: ${this.eur(values.furnitureReserveMonthly * 12)}`,
+            'expenses.otherMonthlyCosts': `p.a.: ${this.eur(values.otherMonthlyCosts * 12)}`,
+            'expenses.annualIncreasePercent': `Kostensteigerung: ${this.percentInput(values.expenseIncrease)} alle ${Math.max(values.expenseIncreaseEveryYears, 1)} Jahr(e)`,
+            'acquisitionCosts.realEstateTransferTaxPercent': `${this.eur(values.acquisitionBase)} × ${this.percentInput(values.rettPercent)} = ${this.eur(values.rett)}`,
+            'acquisitionCosts.notaryPercent': `${this.eur(values.acquisitionBase)} × ${this.percentInput(values.notaryPercent)} = ${this.eur(values.notary)}`,
+            'acquisitionCosts.landRegisterPurchasePercent': `${this.eur(values.acquisitionBase)} × ${this.percentInput(values.landRegisterPercent)} = ${this.eur(values.landRegister)}`,
+            'acquisitionCosts.landRegisterLienPercent': `${this.eur(values.loanPrincipalTotal)} × ${this.percentInput(values.lienPercent)} = ${this.eur(values.lien)}`,
+            'acquisitionCosts.brokerPercent': `${this.eur(values.acquisitionBase)} × ${this.percentInput(values.brokerPercent)} = ${this.eur(values.broker)}`,
+            'acquisitionCosts.otherAcquisitionCosts': `sonstige Erwerbsnebenkosten: ${this.eur(values.otherAcquisitionCosts)}`,
+            'acquisitionCosts.otherFinancingCosts': `sonstige Kreditkosten: ${this.eur(values.otherFinancingCosts)}`,
+            'acquisitionCosts.notaryLandRegisterTaxTreatment': values.notaryImmediateDeductible
+                ? 'Notar/Grundbuch werden im Kaufjahr als Werbungskosten angesetzt'
+                : 'Notar/Grundbuch erhöhen anteilig die AfA-Basis',
+            'acquisitionCosts.financingCostsDeductible': values.financingCostsDeductible
+                ? 'Pfandrecht/Kreditkosten werden steuerlich als Werbungskosten berücksichtigt'
+                : 'Pfandrecht/Kreditkosten werden nicht als Werbungskosten angesetzt',
+            'settings.initialEquityAmount': values.financingGapText,
+            'settings.autoSpecialRepaymentMode': values.autoRepaymentText,
+            'settings.discountRatePercent': `wirkt auf NPV/FV mit ${this.percentInput(values.discountRate)}; nominale Kennzahlen bleiben unverändert`,
+            'depreciation.startYear': `Auto-Quelle: Fertigstellung ${values.completionYear || '-'} / ${values.completionMonth || '-'}`,
+            'depreciation.startMonth': `normale AfA wird im Startjahr monatsgenau gerechnet`,
+            'depreciation.buildingBasis': `automatisch berechnet: ${this.eur(values.buildingDepreciationBasis)}`,
+            'depreciation.degressiveRatePercent': `volle Jahres-AfA grob: ${this.eur(values.buildingDepreciationBasis * values.degressiveRate / 100)}`,
+            'depreciation.linearRatePercent': `lineare Jahres-AfA grob: ${this.eur(values.buildingDepreciationBasis * values.linearRate / 100)}`,
+            'depreciation.special7bApplicationDate': `Regelwerte werden aus diesem Datum vorbelegt`,
+            'depreciation.special7bArea': `${this.dec(values.special7bArea, 2)} m² × ${this.eur(values.special7bLimitPerSqm)} = ${this.eur(values.special7bCap)}`,
+            'depreciation.special7bConstructionCostLimitPerSqm': `${this.dec(values.special7bArea, 2)} m² × ${this.eur(values.special7bConstructionLimit)} = ${this.eur(values.special7bConstructionCap)}`,
+            'depreciation.special7bActualConstructionCostPerSqm': values.special7bActualCostsPerSqm > 0
+                ? `Prüfwert: ${this.eur(values.special7bActualCostsPerSqm)} / m²`
+                : 'optional; leer/0, wenn kein Anbieter-Prüfwert vorliegt',
+            'depreciation.special7bLimitPerSqm': `${this.dec(values.special7bArea, 2)} m² × ${this.eur(values.special7bLimitPerSqm)} = ${this.eur(values.special7bCap)}`,
+            'depreciation.special7bBasis': `min(${this.eur(values.buildingDepreciationBasis)}, ${this.eur(values.special7bCap)}) = ${this.eur(values.special7bAssessmentBasis)}`,
+            'depreciation.special7bRatePercent': `Sonder-AfA p.a.: ${this.eur(values.special7bAssessmentBasis * values.special7bRate / 100)}`,
+            'depreciation.special7bYears': `Sonder-AfA gesamt: ${this.eur(values.special7bAssessmentBasis * values.special7bRate / 100 * values.special7bYears)}`,
+            'depreciation.furnitureBasis': `Möbel/Küche-AfA p.a.: ${this.eur(values.furnitureBasis * values.furnitureRate / 100)}`,
+            'depreciation.furnitureRatePercent': `Möbel/Küche-AfA p.a.: ${this.eur(values.furnitureBasis * values.furnitureRate / 100)}`,
+            'tax.calculationMethod': values.taxMethod === 'section_32a' ? 'rechnet mit Tarif, Soli und optional Kirchensteuer' : 'nutzt steuerlichen Gewinn/Verlust × Grenzsteuersatz',
+            'tax.taxableIncomeBeforeInvestment': `Startwert zvE: ${this.eur(values.taxableIncome)}`,
+            'tax.taxableIncomeAnnualIncreasePercent': `zvE-Steigerung: ${this.percentInput(values.taxableIncomeIncrease)} p.a.`,
+            'tax.marginalTaxRatePercent': values.taxMethod === 'section_32a' ? 'im §32a-Modus deaktiviert' : `vereinfachter Satz: ${this.percentInput(values.marginalTaxRate)}`,
+            'tax.churchTax': values.churchTax ? 'Kirchensteuer wird in Steuer vor/nach Investition einbezogen' : 'Kirchensteuer wird nicht berücksichtigt',
+            'sale.annualValueIncreasePercent': values.saleText,
+            'sale.parkingAnnualValueIncreasePercent': `Stellplätze im Verkauf: ${values.includeParkingInSale ? this.percentInput(values.parkingValueIncrease) : 'deaktiviert'}`,
+            'sale.includeParkingInSalePrice': values.includeParkingInSale ? 'Stellplätze erhöhen den Verkaufspreis' : 'Stellplätze werden im Verkaufspreis nicht bewertet',
+            'sale.sellingCostsPercent': `${this.percentInput(values.sellingCostsPercent)} vom Verkaufspreis = ${this.eur(values.salePrice * values.sellingCostsPercent / 100)}`,
+            'sale.prepaymentPenaltyAmount': `Abzug im Verkaufsjahr: ${this.eur(values.prepaymentPenalty)}`,
+            'sale.taxFreeSale': values.taxFreeSale ? 'Verkauf wird im Modell steuerfrei behandelt' : 'Verkauf wird nicht als steuerfrei markiert',
+        };
+
+        this.getRootElement().querySelectorAll('[data-meta-for]').forEach(meta => {
+            const text = metas[meta.dataset.metaFor] || '';
+            meta.textContent = text;
+            meta.hidden = text === '';
+        });
+    }
+
+    currentInputOverview()
+    {
+        const apartment = Number(this.value('property.apartmentPurchasePrice') || 0);
+        const other = Number(this.value('property.otherPurchasePrice') || 0);
+        const furniture = Number(this.value('property.furniturePurchasePrice') || 0);
+        const livingArea = Number(this.value('property.livingArea') || 0);
+        const landShare = Number(this.value('property.landSharePercent') || 0) / 100;
+        const buildingShare = Number(this.value('property.buildingSharePercent') || 0) / 100;
+        const parkingRows = this.collectRows(this.parkingList);
+        const includedParking = parkingRows.filter(row => row.includedInPurchasePrice);
+        const parkingPurchase = includedParking.reduce((total, row) => total + Number(row.purchasePrice || 0), 0);
+        const parkingRent = parkingRows.reduce((total, row) => total + Number(row.monthlyRent || 0), 0);
+        const propertySplitBase = apartment + other;
+        const acquisitionBase = propertySplitBase + parkingPurchase;
+        const loanPrincipalTotal = this.collectRows(this.loanList).reduce((total, loan) => total + Number(loan.principal || 0), 0);
+        const constructionInterestTotal = this.collectRows(this.constructionInterestList).reduce((total, row) => total + Number(row.amount || 0), 0);
+        const purchaseTotal = acquisitionBase + furniture;
+        const taxTreatment = this.value('acquisitionCosts.notaryLandRegisterTaxTreatment');
+        const notaryImmediateDeductible = taxTreatment === 'immediate_deductible';
+        const special7bArea = Number(this.value('depreciation.special7bArea') || this.value('property.livingArea') || 0);
+        const special7bLimitPerSqm = Number(this.value('depreciation.special7bLimitPerSqm') || 0);
+        const special7bConstructionLimit = Number(this.value('depreciation.special7bConstructionCostLimitPerSqm') || 0);
+        const special7bAssessmentBasis = this.calculatedSpecial7bAssessmentBasis();
+        const saleYears = Math.max(Number(this.value('property.saleYear') || 0) - Number(this.value('property.purchaseYear') || 0), 0);
+        const valueIncrease = Number(this.value('sale.annualValueIncreasePercent') || 0);
+        const includeParkingInSale = Boolean(this.value('sale.includeParkingInSalePrice'));
+        const parkingValueIncrease = Number(this.value('sale.parkingAnnualValueIncreasePercent') || valueIncrease || 0);
+        const propertySaleBase = propertySplitBase + furniture;
+        const salePriceFallback = propertySaleBase * Math.pow(1 + valueIncrease / 100, saleYears)
+            + (includeParkingInSale ? parkingPurchase * Math.pow(1 + parkingValueIncrease / 100, saleYears) : 0);
+        const salePrice = Number(this.lastResultSummary.salePrice || 0) || salePriceFallback;
+        const totalInvestmentCost = Number(this.lastResultSummary.totalInvestmentCost || this.lastResultSummary.totalCosts || 0);
+        const financingGap = totalInvestmentCost > 0 ? loanPrincipalTotal - totalInvestmentCost : 0;
+
+        return {
+            apartment,
+            other,
+            furniture,
+            livingArea,
+            completionYear: Number(this.value('property.completionYear') || 0),
+            completionMonth: Number(this.value('property.completionMonth') || 0),
+            propertySplitBase,
+            parkingPurchase,
+            purchaseTotal,
+            acquisitionBase,
+            landCosts: propertySplitBase * landShare,
+            buildingCosts: propertySplitBase * buildingShare,
+            apartmentAnnualRent: Number(this.value('rent.apartmentMonthlyRent') || 0) * 12,
+            totalAnnualRent: (Number(this.value('rent.apartmentMonthlyRent') || 0) + parkingRent) * 12,
+            vacancyRate: Number(this.value('rent.vacancyPercent') || 0) / 100,
+            rentIncrease: Number(this.value('rent.annualIncreasePercent') || 0),
+            rentIncreaseEveryYears: Number(this.value('rent.increaseEveryYears') || 1),
+            maintenanceMonthly: Number(this.value('expenses.maintenanceReserveMonthly') || 0),
+            managementMonthly: Number(this.value('expenses.managementMonthly') || 0),
+            serviceMonthly: Number(this.value('expenses.servicePoolMonthly') || 0),
+            furnitureReserveMonthly: Number(this.value('expenses.furnitureReserveMonthly') || 0),
+            otherMonthlyCosts: Number(this.value('expenses.otherMonthlyCosts') || 0),
+            expenseAnnualTotal: (
+                Number(this.value('expenses.nonRecoverableHausgeldMonthly') || 0)
+                + Number(this.value('expenses.maintenanceReserveMonthly') || 0)
+                + Number(this.value('expenses.managementMonthly') || 0)
+                + Number(this.value('expenses.servicePoolMonthly') || 0)
+                + Number(this.value('expenses.furnitureReserveMonthly') || 0)
+                + Number(this.value('expenses.otherMonthlyCosts') || 0)
+            ) * 12,
+            expenseIncrease: Number(this.value('expenses.annualIncreasePercent') || 0),
+            expenseIncreaseEveryYears: Number(this.value('expenses.increaseEveryYears') || 1),
+            rettPercent: Number(this.value('acquisitionCosts.realEstateTransferTaxPercent') || 0),
+            notaryPercent: Number(this.value('acquisitionCosts.notaryPercent') || 0),
+            landRegisterPercent: Number(this.value('acquisitionCosts.landRegisterPurchasePercent') || 0),
+            lienPercent: Number(this.value('acquisitionCosts.landRegisterLienPercent') || 0),
+            brokerPercent: Number(this.value('acquisitionCosts.brokerPercent') || 0),
+            otherAcquisitionCosts: Number(this.value('acquisitionCosts.otherAcquisitionCosts') || 0),
+            otherFinancingCosts: Number(this.value('acquisitionCosts.otherFinancingCosts') || 0),
+            rett: acquisitionBase * Number(this.value('acquisitionCosts.realEstateTransferTaxPercent') || 0) / 100,
+            notary: acquisitionBase * Number(this.value('acquisitionCosts.notaryPercent') || 0) / 100,
+            landRegister: acquisitionBase * Number(this.value('acquisitionCosts.landRegisterPurchasePercent') || 0) / 100,
+            lien: loanPrincipalTotal * Number(this.value('acquisitionCosts.landRegisterLienPercent') || 0) / 100,
+            broker: acquisitionBase * Number(this.value('acquisitionCosts.brokerPercent') || 0) / 100,
+            notaryImmediateDeductible,
+            financingCostsDeductible: Boolean(this.value('acquisitionCosts.financingCostsDeductible')),
+            loanPrincipalTotal,
+            constructionInterestTotal,
+            financingGapText: totalInvestmentCost > 0
+                ? `Darlehen ${this.eur(loanPrincipalTotal)} · Gesamtaufwand ${this.eur(totalInvestmentCost)} · Differenz ${this.eur(financingGap)}`
+                : `Darlehenssumme aktuell: ${this.eur(loanPrincipalTotal)}`,
+            autoRepaymentText: this.value('settings.autoSpecialRepaymentMode') === 'positive_cashflow_after_tax'
+                ? 'positive Cashflows werden zur Sondertilgung genutzt'
+                : 'positive Cashflows bleiben frei verfügbar',
+            discountRate: Number(this.value('settings.discountRatePercent') || 0),
+            buildingDepreciationBasis: this.calculatedBuildingDepreciationBasis(),
+            degressiveRate: Number(this.value('depreciation.degressiveRatePercent') || 0),
+            linearRate: Number(this.value('depreciation.linearRatePercent') || 0),
+            special7bArea,
+            special7bLimitPerSqm,
+            special7bConstructionLimit,
+            special7bActualCostsPerSqm: Number(this.value('depreciation.special7bActualConstructionCostPerSqm') || 0),
+            special7bCap: special7bArea * special7bLimitPerSqm,
+            special7bConstructionCap: special7bArea * special7bConstructionLimit,
+            special7bAssessmentBasis,
+            special7bRate: Number(this.value('depreciation.special7bRatePercent') || 0),
+            special7bYears: Number(this.value('depreciation.special7bYears') || 0),
+            furnitureBasis: Number(this.value('depreciation.furnitureBasis') || 0),
+            furnitureRate: Number(this.value('depreciation.furnitureRatePercent') || 0),
+            taxMethod: this.value('tax.calculationMethod'),
+            taxableIncome: Number(this.value('tax.taxableIncomeBeforeInvestment') || 0),
+            taxableIncomeIncrease: Number(this.value('tax.taxableIncomeAnnualIncreasePercent') || 0),
+            marginalTaxRate: Number(this.value('tax.marginalTaxRatePercent') || 0),
+            churchTax: Boolean(this.value('tax.churchTax')),
+            salePrice,
+            saleText: `${this.eur(propertySaleBase + (includeParkingInSale ? parkingPurchase : 0))} × Wertsteigerung über ${saleYears} Jahre ≈ ${this.eur(salePrice)}`,
+            includeParkingInSale,
+            parkingValueIncrease,
+            sellingCostsPercent: Number(this.value('sale.sellingCostsPercent') || 0),
+            prepaymentPenalty: Number(this.value('sale.prepaymentPenaltyAmount') || 0),
+            taxFreeSale: Boolean(this.value('sale.taxFreeSale')),
+        };
+    }
+
+    updateAutoStatusBadges()
+    {
+        this.getRootElement().querySelectorAll('[data-auto-status]').forEach(badge => {
+            const path = badge.dataset.autoStatus;
+            const automatic = this.isAutoFieldCurrentlyAutomatic(path);
+            badge.textContent = automatic ? 'auto' : 'manuell';
+            badge.classList.toggle('rei-auto-badge--manual', !automatic);
+            const reset = this.getRootElement().querySelector(`[data-reset-auto="${path}"]`);
+            if(reset) {
+                reset.hidden = automatic || path === 'depreciation.special7bBasis';
+            }
+        });
+    }
+
+    isAutoFieldCurrentlyAutomatic(path)
+    {
+        if(path === 'depreciation.buildingBasis') {
+            return !this.buildingBasisOverrideEnabled();
+        }
+        const input = this.getRootElement().querySelector(`[data-path="${path}"]`);
+        if(!input) {
+            return true;
+        }
+        if(input.dataset.autoValue === 'true' || input.readOnly) {
+            return true;
+        }
+        if(input.dataset.autoValue === 'false') {
+            return false;
+        }
+        const expected = this.expectedAutoValue(path);
+        return expected !== null && Math.abs(Number(input.value || 0) - expected) < 0.01;
+    }
+
+    expectedAutoValue(path)
+    {
+        if(path === 'depreciation.startYear') {
+            return Number(this.value('property.completionYear') || 0);
+        }
+        if(path === 'depreciation.startMonth') {
+            return Number(this.value('property.completionMonth') || 0);
+        }
+        if(path === 'depreciation.special7bArea') {
+            return Number(this.value('property.livingArea') || 0);
+        }
+        if(path === 'sale.parkingAnnualValueIncreasePercent') {
+            return Number(this.value('sale.annualValueIncreasePercent') || 0);
+        }
+        if(path === 'depreciation.special7bBasis') {
+            return this.calculatedSpecial7bAssessmentBasis();
+        }
+        if(['depreciation.special7bConstructionCostLimitPerSqm', 'depreciation.special7bLimitPerSqm', 'depreciation.special7bRatePercent', 'depreciation.special7bYears'].includes(path)) {
+            const date = String(this.value('depreciation.special7bApplicationDate') || '2023-01-01');
+            const rule = this.special7bRules.find(item => date >= item.from && date < item.until) || this.special7bRules[1];
+            return {
+                'depreciation.special7bConstructionCostLimitPerSqm': rule.constructionCostLimitPerSqm,
+                'depreciation.special7bLimitPerSqm': rule.specialAfaLimitPerSqm,
+                'depreciation.special7bRatePercent': rule.ratePercent,
+                'depreciation.special7bYears': rule.years,
+            }[path];
+        }
+        return null;
     }
 
     syncDepreciationStartDefaultsFromEvent(input)
@@ -720,6 +1245,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         }
         if(force || areaInput.value === '' || Number(areaInput.value || 0) <= 0) {
             areaInput.value = String(livingArea);
+            areaInput.dataset.autoValue = 'true';
         }
     }
 
@@ -820,8 +1346,9 @@ class GUI_InvestmentCalculator extends GUI_Module
     setRuleDefault(path, value, force)
     {
         const input = this.getRootElement().querySelector(`[data-path="${path}"]`);
-        if(input && (force || input.value === '' || Number(input.value || 0) <= 0)) {
+        if(input && (force || input.value === '' || Number(input.value || 0) <= 0 || input.dataset.autoValue === 'true')) {
             input.value = String(value);
+            input.dataset.autoValue = 'true';
         }
     }
 
@@ -1099,6 +1626,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateTaxModeState();
         this.syncParkingValueIncreaseDefault(this.getPath(scenario, 'sale.parkingAnnualValueIncreasePercent') === undefined);
         this.restoringDraft = false;
+        this.updateGuidanceState();
         this.saveDraft();
     }
 
@@ -1147,6 +1675,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
         this.restoringDraft = false;
+        this.updateGuidanceState();
     }
 
     updateTaxModeState()
@@ -1319,10 +1848,12 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     render(result)
     {
+        this.lastResultSummary = result.summary || {};
         this.renderWarnings(result.warnings || []);
         this.renderSummary(result.summary || {}, result.scales || {});
         this.renderSidebarCostBreakdown(result.summary || {});
         this.renderSpecial7bInputs(result.summary?.special7b || {});
+        this.updateGuidanceState();
         this.renderCalculationBreakdown(result.calculationBreakdown || []);
         this.renderScaleLegend(result.scaleLegend || []);
         this.formulas.innerHTML = (result.formulas || []).map(formula => `<div>${this.escape(formula)}</div>`).join('');
@@ -1628,6 +2159,11 @@ class GUI_InvestmentCalculator extends GUI_Module
     pct(value)
     {
         return `${this.dec(Number(value || 0) * 100, 2)} %`;
+    }
+
+    percentInput(value)
+    {
+        return `${this.dec(Number(value || 0), 2)} %`;
     }
 
     escape(value)
