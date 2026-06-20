@@ -665,16 +665,16 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     syncParkingValueIncreaseDefault(force)
     {
-        this.setAutoNumberDefault('sale.parkingAnnualValueIncreasePercent', Number(this.value('sale.annualValueIncreasePercent') || 0), force);
+        this.setAutoNumberDefault('sale.parkingAnnualValueIncreasePercent', Number(this.value('sale.annualValueIncreasePercent') || 0), force, true);
     }
 
-    setAutoNumberDefault(path, value, force)
+    setAutoNumberDefault(path, value, force, allowZero = false)
     {
         const input = this.getRootElement().querySelector(`[data-path="${path}"]`);
-        if(!input || value <= 0) {
+        if(!input || !Number.isFinite(value) || value < 0 || (!allowZero && value === 0)) {
             return;
         }
-        if(force || input.value === '' || Number(input.value || 0) <= 0 || input.dataset.autoValue === 'true') {
+        if(force || input.value === '' || input.dataset.autoValue === 'true' || (!allowZero && Number(input.value || 0) <= 0)) {
             input.value = String(value);
             input.dataset.autoValue = 'true';
         }
