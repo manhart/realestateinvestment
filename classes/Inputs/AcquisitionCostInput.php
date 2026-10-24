@@ -20,6 +20,10 @@ final class AcquisitionCostInput
         public float $otherFinancingCosts,
         public bool $financingCostsDeductible,
         public string $notaryLandRegisterTaxTreatment,
+        public float $disagioAmount = 0.0,
+        public ?int $disagioPaymentYear = null,
+        public bool $disagioFinanced = false,
+        public bool $disagioDeductible = true,
     ) {}
 
     public static function fromArray(array $data, string $state = 'BY'): self
@@ -40,6 +44,15 @@ final class AcquisitionCostInput
             InputReader::float($data, 'otherFinancingCosts'),
             InputReader::bool($data, 'financingCostsDeductible', true),
             $notaryLandRegisterTaxTreatment,
+            InputReader::float($data, 'disagioAmount'),
+            isset($data['disagioPaymentYear']) ? InputReader::int($data, 'disagioPaymentYear') : null,
+            InputReader::bool($data, 'disagioFinanced'),
+            InputReader::bool($data, 'disagioDeductible', true),
         );
+    }
+
+    public function disagioYear(int $purchaseYear): int
+    {
+        return $this->disagioPaymentYear ?? $purchaseYear;
     }
 }

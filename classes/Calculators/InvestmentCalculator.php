@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace realestateinvestment\classes\Calculators;
 
+use InvalidArgumentException;
 use realestateinvestment\classes\Inputs\AcquisitionCostInput;
 use realestateinvestment\classes\Inputs\CalculationSettings;
 use realestateinvestment\classes\Inputs\ConstructionInterestInput;
@@ -29,6 +30,14 @@ final class InvestmentCalculator
     {
         $startYear = $scenario->property->purchaseYear;
         $endYear = $scenario->property->saleYear;
+        $costInput = $scenario->acquisitionCosts;
+        $disagioYear = $costInput->disagioYear($startYear);
+        if($costInput->disagioAmount < 0) {
+            throw new InvalidArgumentException('Das Disagio darf nicht negativ sein.');
+        }
+        if($costInput->disagioAmount > 0 && ($disagioYear < $startYear || $disagioYear > $endYear)) {
+            throw new InvalidArgumentException('Das Disagio-Zahlungsjahr muss zwischen Kaufjahr und Verkaufsjahr liegen.');
+        }
         $purchasePrice = $this->purchasePrice($scenario);
         $initialDebt = $this->initialDebt($scenario);
         $costAllocation = $this->costAllocation($scenario);
@@ -37,7 +46,9 @@ final class InvestmentCalculator
         $totalCosts = $purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] + $constructionInterestTotal;
         // Earmarked credit funds cannot also finance the purchase and its fees.
         $financedConstructionInterest = $constructionInterestTotal - $this->constructionInterestCashTotal($scenario->constructionInterest);
-        $nonFinancedOneTimeCosts = max($purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] + $financedConstructionInterest - $initialDebt, 0);
+        $financedDisagio = $costInput->disagioFinanced ? $costInput->disagioAmount : 0.0;
+        $nonFinancedOneTimeCosts = max($purchasePrice + $acquisition['withoutFinancing']
+            + $acquisition['financingWithoutDisagio'] + $financedConstructionInterest + $financedDisagio - $initialDebt, 0);
         $manualBuildingBasis = $scenario->depreciation->buildingBasisOverrideEnabled && $scenario->depreciation->buildingBasis > 0;
         $autoObjectBuildingBasis = $this->buildingDepreciationBasis($costAllocation, $acquisition);
         $objectBuildingBasis = $manualBuildingBasis
@@ -94,9 +105,12 @@ final class InvestmentCalculator
             $row->depreciationTotal = $depreciation['total'];
 
             $row->constructionInterest = $this->constructionInterestForYear($scenario->constructionInterest, $year);
-            $row->deductibleExpenses = $this->constructionInterestDeductibleForYear($scenario->constructionInterest, $year);
+            $row->disagioAmount = $year === $disagioYear ? $costInput->disagioAmount : 0.0;
+            $row->disagioCashAmount = $costInput->disagioFinanced ? 0.0 : $row->disagioAmount;
+            $row->disagioDeductibleAmount = $costInput->disagioDeductible ? $row->disagioAmount : 0.0;
+            $row->deductibleExpenses = $this->constructionInterestDeductibleForYear($scenario->constructionInterest, $year) + $row->disagioDeductibleAmount;
             if($year === $startYear && $scenario->acquisitionCosts->financingCostsDeductible) {
-                $row->deductibleExpenses += $acquisition['financing'];
+                $row->deductibleExpenses += $acquisition['financingWithoutDisagio'];
             }
             if($year === $startYear) {
                 $row->deductibleExpenses += $acquisition['immediateDeductibleAcquisitionCosts'];
@@ -119,7 +133,7 @@ final class InvestmentCalculator
             $row->taxEffect = $tax['taxEffect'];
             $row->effectiveTaxRate = abs($row->rentalTaxableIncome) > 0.005 ? abs($row->taxEffect / $row->rentalTaxableIncome) : 0.0;
 
-            $row->oneTimeCashCosts = $year === $startYear ? $nonFinancedOneTimeCosts : 0.0;
+            $row->oneTimeCashCosts = ($year === $startYear ? $nonFinancedOneTimeCosts : 0.0) + $row->disagioCashAmount;
             $cashConstructionInterest = $this->constructionInterestCashForYear($scenario->constructionInterest, $year);
             $row->netCashflowBeforeTax = $row->rent - $row->expenses - $row->annuity - $cashConstructionInterest - $row->oneTimeCashCosts;
             $row->netCashflowAfterTaxBeforeAutoSpecialRepayment = $row->netCashflowBeforeTax + $row->taxEffect;
@@ -215,7 +229,8 @@ final class InvestmentCalculator
         $broker = $realEstatePurchasePrice * $input->brokerRate;
         $landRegisterLien = $initialDebt * $input->landRegisterLienRate;
         $withoutFinancing = $realEstateTransferTax + $notary + $landRegisterPurchase + $broker + $input->otherAcquisitionCosts;
-        $financing = $landRegisterLien + $input->otherFinancingCosts;
+        $financingWithoutDisagio = $landRegisterLien + $input->otherFinancingCosts;
+        $financing = $financingWithoutDisagio + $input->disagioAmount;
         $immediateDeductibleAcquisitionCosts = $input->notaryLandRegisterTaxTreatment === AcquisitionCostInput::NOTARY_LAND_REGISTER_IMMEDIATE_DEDUCTIBLE
             ? $notary + $landRegisterPurchase
             : 0.0;
@@ -230,10 +245,15 @@ final class InvestmentCalculator
             'otherAcquisitionCosts' => $input->otherAcquisitionCosts,
             'landRegisterLien' => $landRegisterLien,
             'otherFinancingCosts' => $input->otherFinancingCosts,
+            'disagioAmount' => $input->disagioAmount,
+            'disagioPaymentYear' => $input->disagioYear($scenario->property->purchaseYear),
+            'disagioFinanced' => $input->disagioFinanced,
+            'disagioDeductible' => $input->disagioDeductible,
             'withoutFinancing' => $withoutFinancing,
             'immediateDeductibleAcquisitionCosts' => $immediateDeductibleAcquisitionCosts,
             'depreciationRelevantWithoutFinancing' => $depreciationRelevantWithoutFinancing,
             'financing' => $financing,
+            'financingWithoutDisagio' => $financingWithoutDisagio,
             'total' => $withoutFinancing + $financing,
         ];
     }
@@ -663,6 +683,10 @@ final class InvestmentCalculator
             'otherAcquisitionCosts' => $acquisition['otherAcquisitionCosts'],
             'landRegisterLien' => $acquisition['landRegisterLien'],
             'otherFinancingCosts' => $acquisition['otherFinancingCosts'],
+            'disagioAmount' => $acquisition['disagioAmount'],
+            'disagioPaymentYear' => $acquisition['disagioPaymentYear'],
+            'disagioFinanced' => $acquisition['disagioFinanced'],
+            'disagioDeductible' => $acquisition['disagioDeductible'],
             'acquisitionCostsWithoutFinancing' => $acquisition['withoutFinancing'],
             'immediateDeductibleAcquisitionCosts' => $acquisition['immediateDeductibleAcquisitionCosts'],
             'depreciationRelevantAcquisitionCostsWithoutFinancing' => $acquisition['depreciationRelevantWithoutFinancing'],
@@ -740,11 +764,15 @@ final class InvestmentCalculator
     private function calculationBreakdown(RealEstateInvestmentScenario $scenario, float $purchasePrice, array $acquisition, array $costAllocation, float $totalCosts, float $initialDebt, ?YearlyCalculationResult $firstOperatingRow, ?YearlyCalculationResult $firstTaxEffectRow, array $yearlyRows, array $metrics, array $special7b): array
     {
         $constructionInterestTotal = $this->constructionInterestTotal($scenario->constructionInterest);
+        $disagioRow = $acquisition['disagioAmount'] > 0
+            ? $yearlyRows[$acquisition['disagioPaymentYear'] - $scenario->property->purchaseYear]
+            : null;
         $constructionInterestValues = $scenario->constructionInterest->hasYearlyEntries()
             ? implode(' + ', array_map(static fn($entry): string => $entry->year.': '.$entry->amount, $scenario->constructionInterest->yearlyEntries))
             : 'keine Bauzeitzins-Jahreszeilen';
         $deductibleConstructionInterestTotal = $this->constructionInterestDeductibleTotal($scenario->constructionInterest);
-        $deductibleFinancingCosts = $scenario->acquisitionCosts->financingCostsDeductible ? $acquisition['financing'] : 0.0;
+        $deductibleFinancingCosts = ($scenario->acquisitionCosts->financingCostsDeductible ? $acquisition['financingWithoutDisagio'] : 0.0)
+            + ($scenario->acquisitionCosts->disagioDeductible ? $acquisition['disagioAmount'] : 0.0);
         $propertyBuildingRatio = $costAllocation['propertySplitBase'] > 0 ? $costAllocation['propertyBuildingCosts'] / $costAllocation['propertySplitBase'] : 0.0;
         $propertyDepreciationRelevantAcquisitionCosts = $this->allocatedDepreciationRelevantAcquisitionCosts($costAllocation['propertySplitBase'], $propertyBuildingRatio, $acquisition);
         $parkingBuildingRatio = $costAllocation['parkingTotal'] > 0 ? $costAllocation['parkingBuildingCosts'] / $costAllocation['parkingTotal'] : 0.0;
@@ -799,10 +827,47 @@ final class InvestmentCalculator
             [
                 'group' => 'Finanzierungskosten',
                 'label' => 'Finanzierungskosten',
-                'formula' => 'Darlehenssumme × Pfandrecht % + sonstige Kreditkosten',
-                'values' => $initialDebt.' × '.($scenario->acquisitionCosts->landRegisterLienRate * 100).' % + '.$acquisition['otherFinancingCosts'],
+                'formula' => 'Darlehenssumme × Pfandrecht % + Disagio + sonstige Kreditkosten',
+                'values' => $initialDebt.' × '.($scenario->acquisitionCosts->landRegisterLienRate * 100).' % + '.$acquisition['disagioAmount'].' + '.$acquisition['otherFinancingCosts'],
                 'result' => $acquisition['financing'],
                 'source' => OfficialSourceRegistry::get('estg_9_werbungskosten'),
+            ],
+            ...($acquisition['disagioAmount'] > 0 ? [[
+                'group' => 'Disagio',
+                'label' => 'Disagio '.$acquisition['disagioPaymentYear'],
+                'formula' => 'Einmaliger Eingabebetrag; bereits in den Finanzierungskosten enthalten',
+                'values' => (string)$acquisition['disagioAmount'],
+                'result' => $acquisition['disagioAmount'],
+                'source' => OfficialSourceRegistry::get('estg_11_disagio'),
+            ],
+            [
+                'group' => 'Disagio',
+                'label' => 'Disagio als Werbungskosten '.$acquisition['disagioPaymentYear'],
+                'formula' => 'Vollständiger Sofortabzug im Zahlungsjahr, wenn steuerlicher Ansatz aktiviert',
+                'values' => $acquisition['disagioDeductible'] ? (string)$acquisition['disagioAmount'] : 'steuerlicher Ansatz deaktiviert',
+                'result' => $acquisition['disagioDeductible'] ? $acquisition['disagioAmount'] : 0.0,
+                'source' => OfficialSourceRegistry::get('estg_11_disagio'),
+            ],
+            [
+                'group' => 'Disagio',
+                'label' => 'Eigener Disagio-Abfluss '.$acquisition['disagioPaymentYear'],
+                'formula' => 'Disagio aus eigenen Mitteln; bei enthaltener Darlehensfinanzierung kein zusätzlicher direkter Abfluss',
+                'values' => $acquisition['disagioFinanced'] ? 'im eingegebenen Darlehen enthalten' : (string)$acquisition['disagioAmount'],
+                'result' => $acquisition['disagioFinanced'] ? 0.0 : $acquisition['disagioAmount'],
+            ],
+            [
+                'group' => 'Disagio',
+                'label' => 'CF nach Steuer im Disagio-Zahlungsjahr '.$acquisition['disagioPaymentYear'],
+                'formula' => 'Miete - laufende Ausgaben - Annuität - eigene Einmalkosten inkl. eigenfinanziertem Disagio - nicht finanzierte BZZ + Steuerwirkung - Auto-Sondertilgung',
+                'values' => $disagioRow->rent.' - '.$disagioRow->expenses.' - '.$disagioRow->annuity.' - '.$disagioRow->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $disagioRow->year).' + '.$disagioRow->taxEffect.' - '.$disagioRow->autoSpecialRepayment,
+                'result' => $disagioRow->netCashflowAfterTax,
+            ]] : []),
+            [
+                'group' => 'Finanzierungskosten',
+                'label' => 'Eigene Anfangskosten',
+                'formula' => 'max(Kaufpreis + Erwerbsnebenkosten + Kreditkosten ohne Disagio + finanziertes Disagio + finanzierte BZZ - Darlehenssumme, 0)',
+                'values' => $purchasePrice.' + '.$acquisition['withoutFinancing'].' + '.$acquisition['financingWithoutDisagio'].' + '.($acquisition['disagioFinanced'] ? $acquisition['disagioAmount'] : 0).' + '.($constructionInterestTotal - $this->constructionInterestCashTotal($scenario->constructionInterest)).' - '.$initialDebt,
+                'result' => $yearlyRows[0]->oneTimeCashCosts - $yearlyRows[0]->disagioCashAmount,
             ],
             [
                 'group' => 'Bauzeitzinsen',
@@ -1482,6 +1547,7 @@ final class InvestmentCalculator
             'FV konservativ = Σ CF_t × (1 + r)^(T - t)',
             'FV liquiditätsorientiert = Σ positive CF_t × (1 + r)^(T - t) + Σ negative CF_t',
             'eingesetztes Eigenkapital = Anfangs-Eigenkapital + zusätzliche Kapitalnachschüsse nach Verbrauch des Anfangstopfs',
+            'Disagio = einmalige Finanzierungskosten; steuerlicher Sofortabzug im Zahlungsjahr bei aktiviertem Ansatz',
             'EK-Multiple = Netto-Endvermögen / eingesetztes Eigenkapital',
             'EK-Rendite gesamt = Netto-Vermögensgewinn nach EK / eingesetztes Eigenkapital',
             'Miete = (Monatsmiete × Monate × Mietsteigerungsfaktor + sonstige Einnahmen) × (1 - Leerstand)',

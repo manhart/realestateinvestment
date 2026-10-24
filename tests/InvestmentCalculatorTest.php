@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace realestateinvestment\tests;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use realestateinvestment\classes\Calculators\InvestmentCalculator;
 use realestateinvestment\classes\Inputs\RealEstateInvestmentScenario;
@@ -349,6 +350,116 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertEqualsWithDelta(5783.42, $result['summary']['constructionInterestTotal'], 0.01);
         self::assertEqualsWithDelta(0, $result['summary']['constructionInterestCashTotal'], 0.01);
         self::assertEqualsWithDelta(5783.42, $result['summary']['constructionInterestFinancedTotal'], 0.01);
+    }
+
+    public function testDisagioSeparatesFundingTaxDeductionAndPaymentYear(): void
+    {
+        foreach([false, true] as $financed) {
+            foreach([false, true] as $deductible) {
+                $scenario = $this->cashOnlyScenario();
+                $scenario['acquisitionCosts']['disagioAmount'] = 4000;
+                $scenario['acquisitionCosts']['disagioPaymentYear'] = 2027;
+                $scenario['acquisitionCosts']['disagioFinanced'] = $financed;
+                $scenario['acquisitionCosts']['disagioDeductible'] = $deductible;
+                $scenario['acquisitionCosts']['financingCostsDeductible'] = false;
+                $scenario['loans'][0]['principal'] = $financed ? 104000 : 100000;
+                $result = $this->calculate($scenario)->toArray();
+                $rows = $result['yearlyRows'];
+
+                self::assertEqualsWithDelta(104000, $result['summary']['totalCosts'], 0.01);
+                self::assertEqualsWithDelta(80000, $result['summary']['buildingDepreciationBasis'], 0.01);
+                self::assertEqualsWithDelta($scenario['loans'][0]['principal'], $result['summary']['initialDebt'], 0.01);
+                self::assertEqualsWithDelta(0, $rows[0]['oneTimeCashCosts'], 0.01);
+                self::assertEqualsWithDelta(0, $rows[0]['disagioAmount'], 0.01);
+                self::assertEqualsWithDelta(4000, $rows[1]['disagioAmount'], 0.01);
+                self::assertEqualsWithDelta($financed ? 0 : 4000, $rows[1]['disagioCashAmount'], 0.01);
+                self::assertEqualsWithDelta($deductible ? 4000 : 0, $rows[1]['disagioDeductibleAmount'], 0.01);
+                self::assertEqualsWithDelta($deductible ? 4000 : 0, $rows[1]['deductibleExpenses'], 0.01);
+                self::assertEqualsWithDelta($deductible ? 1680 : 0, $rows[1]['taxEffect'], 0.01);
+                self::assertEqualsWithDelta(($deductible ? 1680 : 0) - ($financed ? 0 : 4000), $rows[1]['netCashflowAfterTax'], 0.01);
+                self::assertEqualsWithDelta(0, $rows[2]['disagioAmount'], 0.01);
+                self::assertEqualsWithDelta($deductible ? -2320 : -4000, $result['summary']['netWorthEffect'], 0.01);
+            }
+        }
+    }
+
+    public function testAutomaticDisagioYearAndDefaultDeductionUsePurchaseYear(): void
+    {
+        $scenario = $this->cashOnlyScenario();
+        $scenario['acquisitionCosts']['disagioAmount'] = 4000;
+        $scenario['acquisitionCosts']['disagioPaymentYear'] = null;
+        $result = $this->calculate($scenario)->toArray();
+        $firstYear = $result['yearlyRows'][0];
+        $breakdown = array_column($result['calculationBreakdown'], null, 'label');
+
+        self::assertEqualsWithDelta(4000, $firstYear['disagioCashAmount'], 0.01);
+        self::assertEqualsWithDelta(4000, $firstYear['deductibleExpenses'], 0.01);
+        self::assertEqualsWithDelta(4000, $result['summary']['financingCosts'], 0.01);
+        self::assertEqualsWithDelta(4000, $result['summary']['oneTimeFinancingCostsTotal'], 0.01);
+        self::assertEqualsWithDelta(4000, $breakdown['Disagio 2026']['result'], 0.01);
+        self::assertEqualsWithDelta(4000, $breakdown['Eigener Disagio-Abfluss 2026']['result'], 0.01);
+        self::assertSame('0 - 0 - 0 - 4000 - 0 + 1680 - 0', $breakdown['CF nach Steuer im Disagio-Zahlungsjahr 2026']['values']);
+        self::assertEqualsWithDelta(-2320, $breakdown['CF nach Steuer im Disagio-Zahlungsjahr 2026']['result'], 0.01);
+        self::assertSame(2026, $result['summary']['acquisitionBreakdown']['disagioPaymentYear']);
+    }
+
+    public function testDisagioDoesNotDuplicateOtherDeductibleCreditCosts(): void
+    {
+        foreach([2026, 2027] as $paymentYear) {
+            $scenario = $this->cashOnlyScenario();
+            $scenario['acquisitionCosts']['otherFinancingCosts'] = 1000;
+            $scenario['acquisitionCosts']['landRegisterLienPercent'] = 1;
+            $scenario['acquisitionCosts']['disagioAmount'] = 4000;
+            $scenario['acquisitionCosts']['disagioPaymentYear'] = $paymentYear;
+            $result = $this->calculate($scenario)->toArray();
+
+            self::assertEqualsWithDelta(6000, $result['summary']['financingCosts'], 0.01);
+            self::assertEqualsWithDelta($paymentYear === 2026 ? 6000 : 2000, $result['yearlyRows'][0]['deductibleExpenses'], 0.01);
+            self::assertEqualsWithDelta($paymentYear === 2027 ? 4000 : 0, $result['yearlyRows'][1]['deductibleExpenses'], 0.01);
+            self::assertEqualsWithDelta(6000, array_sum(array_column($result['yearlyRows'], 'deductibleExpenses')), 0.01);
+            self::assertEqualsWithDelta(80000, $result['summary']['buildingDepreciationBasis'], 0.01);
+        }
+    }
+
+    public function testFinancedDisagioReservesCreditFundsInsteadOfHidingPurchaseGap(): void
+    {
+        $scenario = $this->cashOnlyScenario();
+        $scenario['acquisitionCosts']['disagioAmount'] = 4000;
+        $scenario['acquisitionCosts']['disagioFinanced'] = true;
+        $scenario['acquisitionCosts']['disagioPaymentYear'] = 2027;
+        $result = $this->calculate($scenario)->toArray();
+
+        self::assertEqualsWithDelta(100000, $result['summary']['initialDebt'], 0.01);
+        self::assertEqualsWithDelta(4000, $result['yearlyRows'][0]['oneTimeCashCosts'], 0.01);
+        self::assertEqualsWithDelta(0, $result['yearlyRows'][1]['disagioCashAmount'], 0.01);
+        self::assertEqualsWithDelta(-2320, $result['summary']['netWorthEffect'], 0.01);
+    }
+
+    public function testZeroDisagioPreservesScenarioAndIgnoresInactiveYear(): void
+    {
+        $scenario = $this->baseScenario();
+        $baseline = $this->calculate($scenario)->toArray();
+        $scenario['acquisitionCosts']['disagioAmount'] = 0;
+        $scenario['acquisitionCosts']['disagioPaymentYear'] = 1900;
+        $scenario['acquisitionCosts']['disagioFinanced'] = true;
+        $scenario['acquisitionCosts']['disagioDeductible'] = false;
+
+        self::assertEquals($baseline['yearlyRows'], $this->calculate($scenario)->toArray()['yearlyRows']);
+    }
+
+    public function testRejectsNegativeDisagioAndPaymentOutsideObservationPeriod(): void
+    {
+        foreach([[-1, 2026], [4000, 2025], [4000, 2029], [4000, 0]] as [$amount, $year]) {
+            $scenario = $this->cashOnlyScenario();
+            $scenario['acquisitionCosts']['disagioAmount'] = $amount;
+            $scenario['acquisitionCosts']['disagioPaymentYear'] = $year;
+            try {
+                $this->calculate($scenario);
+                self::fail('Invalid Disagio input must not produce a calculation.');
+            } catch(InvalidArgumentException $exception) {
+                self::assertStringContainsString('Disagio', $exception->getMessage());
+            }
+        }
     }
 
     public function testInitialEquityDoesNotDuplicatePurchaseCashOutflow(): void

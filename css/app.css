@@ -443,7 +443,8 @@ body {
 }
 
 .rei-section-body[hidden],
-.rei-result-body[hidden] {
+.rei-result-body[hidden],
+.rei-disagio-details[hidden] {
     display: none;
 }
 
@@ -534,23 +535,21 @@ body {
     margin: 0;
 }
 
-.rei-repeater-row[data-type="constructionInterest"] {
-    display: grid;
-    grid-template-columns: minmax(170px, 1.7fr) 84px minmax(120px, 1fr) minmax(132px, max-content) minmax(96px, max-content) 90px;
-    align-items: end;
+.rei-repeater-row[data-type="constructionInterest"] [data-field="label"] {
+    flex-basis: 170px;
 }
 
-.rei-repeater-row[data-type="constructionInterest"] label,
-.rei-repeater-row[data-type="constructionInterest"] .rei-check-field,
-.rei-repeater-row[data-type="constructionInterest"] > .btn {
-    flex: initial;
+.rei-repeater-row[data-type="constructionInterest"] [data-field="year"] {
+    flex: 0 1 84px;
 }
 
 .rei-repeater-row[data-type="constructionInterest"] .rei-check-field {
+    flex: 1 1 260px;
+    min-width: 0;
+    grid-template-columns: 36px minmax(0, max-content) 22px;
     justify-content: flex-start;
     align-self: end;
     min-height: 31px;
-    white-space: nowrap;
 }
 
 .rei-repeater-row > .btn {

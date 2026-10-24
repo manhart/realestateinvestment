@@ -35,6 +35,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'depreciation.special7bActualConstructionCostPerSqm',
         ];
         this.autoManagedPaths = new Set([
+            'acquisitionCosts.disagioPaymentYear',
             'depreciation.startYear',
             'depreciation.startMonth',
             'depreciation.buildingBasis',
@@ -92,6 +93,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateBuildingBasisOverrideState();
         this.syncSpecial7bCalculatedCosts();
         this.syncParkingValueIncreaseDefault(false);
+        this.syncDisagioYear(false);
         this.updateGuidanceState();
         this.calculate();
         this.refreshScenarioList().then(() => this.importSharedScenarioFromUrl());
@@ -115,6 +117,7 @@ class GUI_InvestmentCalculator extends GUI_Module
                 {title: 'Annuität', field: 'annuity', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Restschuld', field: 'remainingDebt', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: (values, data) => this.lastValue(data, 'remainingDebt'), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Bauzeitzinsen brutto', field: 'constructionInterest', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'Disagio', field: 'disagioAmount', visible: false, hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue()), headerTooltip: 'Bruttobetrag im Zahlungsjahr. Steuerabzug und eigener Liquiditätsabfluss sind im Rechenweg getrennt erläutert.'},
                 {title: 'BZZ/Kreditkosten/Erwerbs-WK', field: 'deductibleExpenses', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'Werbungskosten ohne AfA', field: 'advertisingCostsWithoutDepreciation', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'AfA degressiv', field: 'depreciationDegressive', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
@@ -196,6 +199,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('input', event => {
             this.normalizeIntegerInput(event.target, false);
             this.markAutoFieldManualFromEvent(event.target);
+            if(event.target.dataset.path === 'property.purchaseYear') this.syncDisagioYear(false);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
             this.syncBuildingBasisFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, false);
@@ -210,6 +214,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('change', event => {
             this.normalizeIntegerInput(event.target, true);
             this.markAutoFieldManualFromEvent(event.target);
+            if(event.target.dataset.path === 'property.purchaseYear') this.syncDisagioYear(false);
             this.syncDepreciationStartDefaultsFromEvent(event.target);
             this.syncBuildingBasisFromEvent(event.target);
             this.syncSpecial7bDefaultsFromEvent(event.target, true);
@@ -267,9 +272,13 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.landRegisterLienPercent': 'Kosten für Eintragung des Grundpfandrechts, berechnet auf die Darlehenssumme.',
             'acquisitionCosts.brokerPercent': 'Maklerkosten in Prozent vom Kaufpreis. Im Modell werden sie als Erwerbsnebenkosten berücksichtigt.',
             'acquisitionCosts.otherAcquisitionCosts': 'Weitere einmalige Erwerbsnebenkosten, die nicht in den Prozentfeldern enthalten sind.',
-            'acquisitionCosts.otherFinancingCosts': 'Einmalige Kreditkosten außerhalb des Pfandrechts, z. B. Bankgebühren.',
+            'acquisitionCosts.otherFinancingCosts': 'Weitere einmalige Kreditkosten, z. B. Bankgebühren. Pfandrecht und Disagio werden separat erfasst und dürfen hier nicht nochmals enthalten sein.',
+            'acquisitionCosts.disagioAmount': 'Einmalige Zinsvorauszahlung an die Bank. Der Rechner setzt den Betrag bei aktiviertem steuerlichem Ansatz vollständig im Zahlungsjahr als Werbungskosten an. Eine Verteilung auf mehrere Jahre wird nicht berechnet. Der Sofortabzug ist eine Rechenannahme und setzt insbesondere ein marktübliches Disagio sowie den tatsächlichen Zahlungsabfluss voraus (§ 11 Abs. 2 EStG). Nicht nochmals unter sonstigen Kreditkosten oder Bauzeitzinsen erfassen.',
+            'acquisitionCosts.disagioPaymentYear': 'Jahr, in dem das Disagio tatsächlich bezahlt oder von der Darlehensauszahlung einbehalten wurde. Automatisch wird das Kaufjahr vorgeschlagen. Eine manuelle Jahresangabe bleibt erhalten.',
+            'acquisitionCosts.disagioFinanced': 'Bei Darlehensfinanzierung muss das Disagio bereits in der eingegebenen Darlehenssumme enthalten sein. Es gibt keinen zusätzlichen direkten Eigenmittelabfluss. Darlehen und Anfangs-Eigenkapital werden nicht automatisch geändert.',
+            'acquisitionCosts.disagioDeductible': 'Aktiv: vollständiger Ansatz als Werbungskosten im Zahlungsjahr unter der Annahme eines zulässigen Sofortabzugs. Die Finanzierung des Disagios ist davon unabhängig.',
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'Steuert, ob Notar/Grundbuch sofort als Werbungskosten oder über die AfA-Basis berücksichtigt werden.',
-            'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz von Pfandrecht und sonstigen Kreditkosten als Werbungskosten.',
+            'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz von Pfandrecht und sonstigen Kreditkosten im Kaufjahr. Der steuerliche Ansatz des Disagios wird separat eingestellt.',
             'settings.initialEquityAmount': 'Vom Anleger zu Beginn bereitgestellter Liquiditätstopf. Unterdeckungen werden daraus gedeckt, bevor zusätzliche Kapitalnachschüsse zählen. Bereits im Cashflow erfasste Ausgaben werden nicht nochmals als Aufwand abgezogen. Unverbrauchtes Anfangskapital wird am Ende zurückgeführt.',
             'settings.autoSpecialRepaymentMode': 'Optional können positive echte Cashflows zur Sondertilgung genutzt werden. Opportunitätszinsen sind keine verfügbare Liquidität.',
             'settings.discountRatePercent': 'Vergleichsrendite für Barwert und Future Value. Sie ändert nicht den nominalen Netto-Vermögenseffekt.',
@@ -891,6 +900,8 @@ class GUI_InvestmentCalculator extends GUI_Module
 
         if(['depreciation.startYear', 'depreciation.startMonth'].includes(path)) {
             this.syncDepreciationStartDefaults(true);
+        } else if(path === 'acquisitionCosts.disagioPaymentYear') {
+            this.syncDisagioYear(true);
         } else if(path === 'depreciation.buildingBasis') {
             const override = this.getRootElement().querySelector('[data-role="building-basis-override"]');
             if(override) {
@@ -944,6 +955,10 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.brokerPercent': `${this.eur(values.acquisitionBase)} × ${this.percentInput(values.brokerPercent)} = ${this.eur(values.broker)}`,
             'acquisitionCosts.otherAcquisitionCosts': `sonstige Erwerbsnebenkosten: ${this.eur(values.otherAcquisitionCosts)}`,
             'acquisitionCosts.otherFinancingCosts': `sonstige Kreditkosten: ${this.eur(values.otherFinancingCosts)}`,
+            'acquisitionCosts.disagioAmount': `einmalig: ${this.eur(values.disagioAmount)}`,
+            'acquisitionCosts.disagioPaymentYear': `Zahlung / Steueransatz: ${values.disagioPaymentYear || '-'}`,
+            'acquisitionCosts.disagioFinanced': values.disagioFinanced ? 'in der Darlehenssumme enthalten' : 'eigener Abfluss im Zahlungsjahr',
+            'acquisitionCosts.disagioDeductible': values.disagioDeductible ? 'Sofortabzug im Zahlungsjahr als Rechenannahme' : 'kein steuerlicher Ansatz; Kosten bleiben erhalten',
             'acquisitionCosts.notaryLandRegisterTaxTreatment': values.notaryImmediateDeductible
                 ? 'Notar/Grundbuch werden im Kaufjahr als Werbungskosten angesetzt'
                 : 'Notar/Grundbuch erhöhen anteilig die AfA-Basis',
@@ -1065,6 +1080,10 @@ class GUI_InvestmentCalculator extends GUI_Module
             brokerPercent: Number(this.value('acquisitionCosts.brokerPercent') || 0),
             otherAcquisitionCosts: Number(this.value('acquisitionCosts.otherAcquisitionCosts') || 0),
             otherFinancingCosts: Number(this.value('acquisitionCosts.otherFinancingCosts') || 0),
+            disagioAmount: Number(this.value('acquisitionCosts.disagioAmount') || 0),
+            disagioPaymentYear: Number(this.value('acquisitionCosts.disagioPaymentYear') || this.value('property.purchaseYear') || 0),
+            disagioFinanced: Boolean(this.value('acquisitionCosts.disagioFinanced')),
+            disagioDeductible: Boolean(this.value('acquisitionCosts.disagioDeductible')),
             rett: acquisitionBase * Number(this.value('acquisitionCosts.realEstateTransferTaxPercent') || 0) / 100,
             notary: acquisitionBase * Number(this.value('acquisitionCosts.notaryPercent') || 0) / 100,
             landRegister: acquisitionBase * Number(this.value('acquisitionCosts.landRegisterPurchasePercent') || 0) / 100,
@@ -1145,6 +1164,9 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     expectedAutoValue(path)
     {
+        if(path === 'acquisitionCosts.disagioPaymentYear') {
+            return Number(this.value('property.purchaseYear') || 0);
+        }
         if(path === 'depreciation.startYear') {
             return Number(this.value('property.completionYear') || 0);
         }
@@ -1191,6 +1213,15 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         this.setAutoNumberDefault('depreciation.startYear', Number(this.value('property.completionYear') || 0), force);
         this.setAutoNumberDefault('depreciation.startMonth', Number(this.value('property.completionMonth') || 0), force);
+    }
+
+    syncDisagioYear(force = false)
+    {
+        const input = this.getRootElement().querySelector('[data-path="acquisitionCosts.disagioPaymentYear"]');
+        if(input && (force || input.dataset.autoValue === 'true' || input.value === '')) {
+            input.value = String(this.value('property.purchaseYear') || '');
+            input.dataset.autoValue = 'true';
+        }
     }
 
     syncBuildingBasisFromEvent(input)
@@ -1418,6 +1449,12 @@ class GUI_InvestmentCalculator extends GUI_Module
                 this.render(result);
             }
         } catch(error) {
+            if(sequence !== this.calculateSequence) return;
+            this.lastResultSummary = {};
+            [this.summary, this.purchaseBreakdown, this.acquisitionBreakdown, this.financingBreakdown, this.totalBreakdown, this.saleBreakdown, this.depreciationBasisBreakdown, this.calculationBreakdown].forEach(element => element.innerHTML = '');
+            this.yearTable.clearData();
+            this.rowCount.textContent = 'Keine gültige Berechnung';
+            this.updateGuidanceState();
             this.warnings.innerHTML = `<div class="alert alert-danger">${this.escape(error.message || error)}</div>`;
         }
     }
@@ -1639,6 +1676,9 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.syncSpecial7bCalculatedCosts();
         const scenario = {};
         this.getRootElement().querySelectorAll('[data-path]').forEach(input => this.setPath(scenario, input.dataset.path, this.inputValue(input)));
+        if(this.isAutoFieldCurrentlyAutomatic('acquisitionCosts.disagioPaymentYear')) {
+            scenario.acquisitionCosts.disagioPaymentYear = null;
+        }
         scenario.parkingUnits = this.collectRows(this.parkingList);
         scenario.constructionInterest ??= {};
         scenario.constructionInterest.yearlyEntries = this.collectRows(this.constructionInterestList);
@@ -1660,6 +1700,10 @@ class GUI_InvestmentCalculator extends GUI_Module
                 this.setInputValue(input, value);
             }
         });
+
+        const disagioYear = this.getRootElement().querySelector('[data-path="acquisitionCosts.disagioPaymentYear"]');
+        disagioYear.dataset.autoValue = scenario.acquisitionCosts?.disagioPaymentYear == null ? 'true' : 'false';
+        this.syncDisagioYear(false);
 
         this.parkingList.innerHTML = '';
         (scenario.parkingUnits || []).forEach(row => this.addParkingRow(row));
@@ -1726,6 +1770,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateRepeaterNames(this.loanList, 'loans');
         this.scenarioList.value = '';
         this.syncDepreciationStartDefaults(true);
+        this.syncDisagioYear(true);
         this.syncSpecial7bDefaults(false);
         this.updateBuildingBasisOverrideState();
         this.normalizeIntegerInputs();
@@ -1749,6 +1794,10 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     updateDependentFieldStates()
     {
+        this.element('[data-role="disagio-details"]').hidden = Number(this.value('acquisitionCosts.disagioAmount') || 0) <= 0;
+        const disagioYear = this.getRootElement().querySelector('[data-path="acquisitionCosts.disagioPaymentYear"]');
+        disagioYear.min = String(this.value('property.purchaseYear') || '');
+        disagioYear.max = String(this.value('property.saleYear') || '');
         const special7bActive = Boolean(this.value('depreciation.special7bActive'));
         [
             'depreciation.special7bApplicationDate',
@@ -1819,6 +1868,10 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.landRegisterLienPercent': 0.5,
             'acquisitionCosts.financingCostsDeductible': true,
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'afa_basis',
+            'acquisitionCosts.disagioAmount': 0,
+            'acquisitionCosts.disagioPaymentYear': null,
+            'acquisitionCosts.disagioFinanced': false,
+            'acquisitionCosts.disagioDeductible': true,
             'depreciation.startYear': 2026,
             'depreciation.startMonth': 1,
             'depreciation.buildingBasis': 0,
@@ -1917,6 +1970,9 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     inputValue(input)
     {
+        if(input.dataset.boolean !== undefined) {
+            return input.value === 'true';
+        }
         if(input.type === 'checkbox') {
             return input.checked;
         }
@@ -1961,6 +2017,11 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.renderSpecial7bInputs(result.summary?.special7b || {});
         this.updateGuidanceState();
         this.renderCalculationBreakdown(result.calculationBreakdown || []);
+        if(Number(result.summary?.acquisitionBreakdown?.disagioAmount || 0) > 0) {
+            this.yearTable.showColumn('disagioAmount');
+        } else {
+            this.yearTable.hideColumn('disagioAmount');
+        }
         this.renderScaleLegend(result.scaleLegend || []);
         this.formulas.innerHTML = (result.formulas || []).map(formula => `<div>${this.escape(formula)}</div>`).join('');
         this.yearTable.setData(result.yearlyRows || []);
@@ -2067,10 +2128,12 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         const rows = [
             ['Pfandrecht', values.landRegisterLien],
+            [`Disagio (${values.disagioPaymentYear})`, values.disagioAmount],
+            ['Sonstige Kreditkosten', values.otherFinancingCosts],
+            ['Zwischensumme Kreditkosten', summary.financingCosts, true],
             ['Bauzeitzinsen brutto', summary.constructionInterestTotal],
             ['davon nicht finanziert', summary.constructionInterestCashTotal],
             ['davon finanziert', summary.constructionInterestFinancedTotal],
-            ['sonstige Kreditkosten', values.otherFinancingCosts],
             ['Zwischensumme einmalige Finanzierungskosten', summary.oneTimeFinancingCostsTotal, true],
         ];
         this.financingBreakdown.innerHTML = this.renderBreakdownRows(rows);

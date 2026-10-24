@@ -16,6 +16,10 @@ final class OfficialSourceRegistry
     private static function all(): array
     {
         return [
+            'estg_11_disagio' => [
+                'label' => '§ 11 Abs. 2 EStG',
+                'url' => 'https://www.gesetze-im-internet.de/estg/__11.html',
+            ],
             'estg_9_werbungskosten' => [
                 'label' => '§ 9 EStG',
                 'url' => 'https://www.gesetze-im-internet.de/estg/__9.html',
