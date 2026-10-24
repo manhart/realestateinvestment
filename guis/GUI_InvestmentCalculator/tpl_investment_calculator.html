@@ -1,28 +1,68 @@
 <div id="{MODULE_ID}" class="rei-module">
     <section class="rei-toolbar">
-        <div>
+        <div class="rei-toolbar-heading">
             <h1>Immobilien-Kapitalanlage</h1>
-            <input class="form-control form-control-sm" data-path="scenarioName" value="Basisszenario" aria-label="Szenarioname" autocomplete="off">
-            <input class="form-control form-control-sm mt-1" data-path="scenarioGroup" value="" aria-label="Objekt oder Gruppe" placeholder="Objekt / Gruppe" autocomplete="off">
+            <div class="rei-workspace-actions" aria-label="Privater Workspace">
+                <span>Privater Workspace</span>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-role="copy-workspace-link" data-bs-toggle="tooltip" title="Kopiert deinen privaten Zugang zu allen gespeicherten Szenarien."><i class="bi bi-link-45deg" aria-hidden="true"></i> Workspace-Link kopieren</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-role="bookmark-workspace" data-bs-toggle="tooltip" title="Zeigt, wie du deinen privaten Workspace als Browser-Lesezeichen sicherst."><i class="bi bi-star" aria-hidden="true"></i> Workspace merken</button>
+            </div>
         </div>
-        <div class="rei-actions">
-            <button class="btn btn-outline-secondary" type="button" data-role="new-scenario">Neu</button>
-            <button class="btn btn-primary" type="button" data-role="calculate">Berechnen</button>
-            <button class="btn btn-outline-secondary" type="button" data-role="save">Speichern</button>
-            <button class="btn btn-outline-secondary" type="button" data-role="rename-scenario">Umbenennen</button>
-            <button class="btn btn-outline-danger" type="button" data-role="delete-scenario">Löschen</button>
-            <select class="form-select form-select-sm rei-scenario-select" data-role="scenario-group-list" aria-label="Szenario-Gruppe filtern">
+        <div class="rei-toolbar-row" data-role="open-controls">
+            <label class="rei-toolbar-field">Gruppe filtern<select class="form-select form-select-sm" data-role="scenario-group-list">
                 <option value="">Alle Gruppen</option>
-            </select>
-            <select class="form-select form-select-sm rei-scenario-select" data-role="scenario-list" aria-label="Gespeichertes Szenario laden">
-                <option value="">Gespeichertes Szenario</option>
-            </select>
-            <button class="btn btn-outline-secondary" type="button" data-role="load">Laden</button>
-            <button class="btn btn-outline-secondary" type="button" data-role="copy-workspace-link">Workspace-Link</button>
-            <button class="btn btn-outline-secondary" type="button" data-role="share-scenario">Szenario teilen</button>
-            <button class="btn btn-outline-secondary" type="button" data-role="compare">Szenarien vergleichen</button>
+            </select></label>
+            <label class="rei-toolbar-field rei-toolbar-field--wide">Gespeichertes Szenario<select class="form-select form-select-sm" data-role="scenario-list">
+                <option value="">Szenario auswählen</option>
+            </select></label>
+            <div class="rei-actions">
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-role="load" data-scenario-action disabled><i class="bi bi-folder2-open" aria-hidden="true"></i> Laden</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-role="new-scenario" data-scenario-action><i class="bi bi-plus-lg" aria-hidden="true"></i> Neu</button>
+            </div>
         </div>
+        <div class="rei-toolbar-row" data-role="edit-controls">
+            <label class="rei-toolbar-field">Szenarioname<input class="form-control form-control-sm" data-path="scenarioName" value="Basisszenario" placeholder="z. B. Basis oder 1 % Tilgung" autocomplete="off"></label>
+            <label class="rei-toolbar-field rei-toolbar-field--wide">Objekt / Gruppe (optional)<input class="form-control form-control-sm" data-path="scenarioGroup" value="" placeholder="z. B. Leipzig: Musterstraße 12" autocomplete="off"></label>
+            <div class="rei-actions">
+                <button class="btn btn-primary btn-sm" type="button" data-role="save" data-scenario-action><i class="bi bi-save" aria-hidden="true"></i> Speichern</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-role="save-copy" data-scenario-action><i class="bi bi-files" aria-hidden="true"></i> Als Kopie speichern</button>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots" aria-hidden="true"></i> Mehr</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><button class="dropdown-item" type="button" data-role="share-scenario" data-scenario-action><i class="bi bi-share" aria-hidden="true"></i> Szenario teilen</button></li>
+                        <li><button class="dropdown-item" type="button" data-role="compare" data-scenario-action><i class="bi bi-bar-chart" aria-hidden="true"></i> Szenarien vergleichen</button></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item text-danger" type="button" data-role="delete-scenario" data-scenario-action disabled><i class="bi bi-trash" aria-hidden="true"></i> Szenario löschen</button></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="rei-toolbar-status">
+            <span data-role="save-status" role="status" aria-live="polite">Neuer Entwurf · noch nicht auf dem Server gespeichert</span>
+            <span data-role="calculation-status" role="status" aria-live="polite"></span>
+            <button class="btn btn-link btn-sm" type="button" data-role="retry-calculation" hidden><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Erneut versuchen</button>
+        </div>
+        <div data-role="action-message" role="status" aria-live="polite" hidden></div>
     </section>
+
+    <div class="modal fade" data-role="action-dialog" tabindex="-1" aria-labelledby="{MODULE_ID}-dialog-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+            <div class="modal-header"><h2 class="modal-title fs-5" id="{MODULE_ID}-dialog-title"></h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Abbrechen"></button></div>
+            <div class="modal-body"><p data-role="dialog-message"></p><label class="d-block" data-role="dialog-input-label">Neuer Szenarioname<input class="form-control mt-1" data-role="dialog-input" required autocomplete="off"></label></div>
+            <div class="modal-footer" data-role="dialog-buttons"></div>
+        </div></div>
+    </div>
+    <div class="modal fade" data-role="workspace-dialog" tabindex="-1" aria-labelledby="{MODULE_ID}-workspace-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+            <div class="modal-header"><h2 class="modal-title fs-5" id="{MODULE_ID}-workspace-title">Privaten Workspace sichern</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button></div>
+            <div class="modal-body">
+                <p>Dieser Link ist dein privater Zugang. Wer ihn kennt, kann deine Szenarien sehen und bearbeiten. Du musst dir den langen Schlüssel nicht merken; sichere den vollständigen Link. Ungespeicherte Browser-Entwürfe werden damit nicht gesichert.</p>
+                <label class="d-block">Privater Workspace-Link<textarea class="form-control mt-1 rei-workspace-url" data-role="workspace-link-value" rows="3" readonly></textarea></label>
+                <p class="mt-3 mb-0">Als Lesezeichen speichern: <kbd>Strg</kbd> + <kbd>D</kbd> unter Windows/Linux oder <kbd>⌘</kbd> + <kbd>D</kbd> am Mac. Auf dem Smartphone nutze im Browsermenü die Lesezeichen-/Favoritenfunktion. Die Webseite kann kein Lesezeichen automatisch anlegen.</p>
+            </div>
+            <div class="modal-footer"><button class="btn btn-outline-primary" type="button" data-role="copy-workspace-link"><i class="bi bi-link-45deg" aria-hidden="true"></i> Link kopieren</button><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Schließen</button></div>
+        </div></div>
+    </div>
 
     <section class="rei-section rei-reference-panel">
         <div class="rei-reference-grid">
@@ -39,15 +79,15 @@
                 </article>
                 <article>
                     <h3>Speichern und Laden</h3>
-                    <p>Gespeichert wird in deinem privaten Workspace. Ein gleichnamiges Szenario wird aktualisiert. Ändert sich der Szenarioname und du speicherst, entsteht eine neue Variante.</p>
+                    <p>Wähle Gruppe und Szenario und klicke auf Laden. Speichern aktualisiert das aktive Szenario auf dem Server. Browser-Entwürfe werden unabhängig davon lokal wiederhergestellt und sind noch keine Server-Speicherung.</p>
                 </article>
                 <article>
-                    <h3>Umbenennen</h3>
-                    <p>Benennt das ausgewählte gespeicherte Szenario um und verschiebt es auf den neuen Dateinamen. Dabei wird keine Kopie angelegt.</p>
+                    <h3>Name ändern oder Kopie anlegen</h3>
+                    <p>Ändere den Szenarionamen und klicke auf Speichern, um das aktive Szenario umzubenennen. Nur Als Kopie speichern legt eine neue Variante an; das Original bleibt dabei unverändert.</p>
                 </article>
                 <article>
                     <h3>Löschen</h3>
-                    <p>Löscht das ausgewählte gespeicherte Szenario aus deinem Workspace. Die aktuell sichtbaren Eingaben bleiben als ungespeicherter Entwurf im Browser stehen.</p>
+                    <p>Löscht nach Bestätigung das aktive Szenario aus deinem Workspace, nicht bloß die Auswahl im Ladefeld. Die sichtbaren Eingaben bleiben als ungespeicherter Entwurf im Browser stehen.</p>
                 </article>
                 <article>
                     <h3>Gruppe ändern</h3>
@@ -55,7 +95,7 @@
                 </article>
                 <article>
                     <h3>Workspace-Link</h3>
-                    <p>Kopiert den privaten Link zu deinem Workspace. Wer diesen Link kennt, kann deine gespeicherten Szenarien sehen und bearbeiten.</p>
+                    <p>Die Workspace-Buttons stehen oben dauerhaft sichtbar. Link kopieren sichert den vollständigen privaten Zugang; Workspace merken erklärt das Speichern als Browser-Lesezeichen. Wer den Link kennt, kann deine gespeicherten Szenarien sehen und bearbeiten. Der Link speichert keine ungespeicherten Änderungen auf dem Server.</p>
                 </article>
                 <article>
                     <h3>Szenario teilen</h3>

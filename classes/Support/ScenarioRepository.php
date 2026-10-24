@@ -8,23 +8,75 @@ use RuntimeException;
 
 final class ScenarioRepository
 {
-    public function save(string $workspaceKey, string $name, array $scenario): array
+    public function save(string $workspaceKey, string $name, array $scenario, ?string $existingId = null): array
     {
         $this->assertWorkspaceKey($workspaceKey);
+        $name = trim($name);
+        if($name === '') {
+            throw new InvalidArgumentException('Bitte einen Szenarionamen eingeben.');
+        }
         $id = $this->scenarioId($name);
         $file = $this->filePath($workspaceKey, $id);
+        $oldFile = $existingId ? $this->filePath($workspaceKey, $this->scenarioId($existingId), false) : null;
+        if($oldFile && !is_file($oldFile)) {
+            throw new InvalidArgumentException('Das aktive Szenario existiert nicht mehr. Bitte als Kopie speichern.');
+        }
+        if($file !== $oldFile && is_file($file)) {
+            throw new InvalidArgumentException('Ein Szenario mit diesem Namen existiert bereits in diesem Workspace.');
+        }
         $group = $this->scenarioGroup($scenario);
+        $scenario['scenarioName'] = $name;
         $scenario['scenarioGroup'] = $group;
-
-        file_put_contents($file, json_encode([
+        $updatedAt = date('c');
+        $json = json_encode([
             'id' => $id,
             'name' => $name,
             'group' => $group,
             'scenario' => $scenario,
-            'updatedAt' => date('c'),
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+            'updatedAt' => $updatedAt,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
-        return ['id' => $id, 'name' => $name, 'group' => $group];
+        $this->writeScenario($file, $json, $file !== $oldFile);
+        if($oldFile && $oldFile !== $file && !unlink($oldFile)) {
+            unlink($file);
+            throw new RuntimeException('Die alte Szenario-Datei konnte nicht entfernt werden.');
+        }
+
+        return ['id' => $id, 'name' => $name, 'group' => $group, 'updatedAt' => $updatedAt];
+    }
+
+    private function writeScenario(string $file, string $json, bool $createOnly): void
+    {
+        if($createOnly) {
+            $stream = @fopen($file, 'x');
+            if(!$stream) {
+                throw new RuntimeException('Das Szenario konnte nicht neu angelegt werden. Name oder Schreibrechte prüfen.');
+            }
+            try {
+                if(fwrite($stream, $json) !== strlen($json)) {
+                    throw new RuntimeException('Das Szenario konnte nicht vollständig gespeichert werden.');
+                }
+            } catch(\Throwable $error) {
+                fclose($stream);
+                unlink($file);
+                throw $error;
+            }
+            fclose($stream);
+            return;
+        }
+
+        // Replace only after a complete write, leaving the original intact on failure.
+        $temporaryFile = tempnam(dirname($file), '.scenario-');
+        if(!$temporaryFile) {
+            throw new RuntimeException('Das Szenario konnte nicht zum Speichern vorbereitet werden.');
+        }
+        try {
+            if(file_put_contents($temporaryFile, $json, LOCK_EX) !== strlen($json) || !rename($temporaryFile, $file)) {
+                throw new RuntimeException('Das Szenario konnte nicht gespeichert werden.');
+            }
+        } finally {
+            if(is_file($temporaryFile)) unlink($temporaryFile);
+        }
     }
 
     public function load(string $workspaceKey, string $id): array
@@ -40,46 +92,11 @@ final class ScenarioRepository
 
     public function rename(string $workspaceKey, string $id, string $newName): array
     {
-        $this->assertWorkspaceKey($workspaceKey);
-        $oldId = $this->scenarioId($id);
-        $newName = trim($newName);
-        if($newName === '') {
-            throw new InvalidArgumentException('Der neue Szenarioname darf nicht leer sein.');
-        }
-
-        $newId = $this->scenarioId($newName);
-        $oldFile = $this->filePath($workspaceKey, $oldId, false);
-        if(!is_file($oldFile)) {
-            return [];
-        }
-
-        $newFile = $this->filePath($workspaceKey, $newId, false);
-        if($newId !== $oldId && is_file($newFile)) {
-            throw new InvalidArgumentException('Ein Szenario mit diesem Namen existiert bereits.');
-        }
-
-        $data = json_decode((string)file_get_contents($oldFile), true, 512, JSON_THROW_ON_ERROR);
-        if(!is_array($data)) {
-            return [];
-        }
-
-        $scenario = (array)($data['scenario'] ?? []);
+        $data = $this->load($workspaceKey, $id);
+        if(!$data) return [];
+        $scenario = $data['scenario'];
         $scenario['scenarioName'] = $newName;
-        $group = $this->scenarioGroup($scenario);
-        $scenario['scenarioGroup'] = $group;
-
-        $data['id'] = $newId;
-        $data['name'] = $newName;
-        $data['group'] = $group;
-        $data['scenario'] = $scenario;
-        $data['updatedAt'] = date('c');
-
-        file_put_contents($newFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-        if($newFile !== $oldFile && !unlink($oldFile)) {
-            throw new RuntimeException('Alte Szenario-Datei konnte nicht entfernt werden.');
-        }
-
-        return ['id' => $newId, 'name' => $newName, 'group' => $group, 'scenario' => $scenario];
+        return $this->save($workspaceKey, $newName, $scenario, $id) + ['scenario' => $scenario];
     }
 
     public function delete(string $workspaceKey, string $id): array

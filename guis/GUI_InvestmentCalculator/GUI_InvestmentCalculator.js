@@ -9,6 +9,15 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.restoringDraft = false;
         this.calculateTimer = null;
         this.calculateSequence = 0;
+        this.calculationRevision = 0;
+        this.lastCalculationFingerprint = null;
+        this.activeScenario = null;
+        this.savedSnapshot = null;
+        this.baselineSnapshot = null;
+        this.restoredUnsaved = false;
+        this.operationBusy = false;
+        this.initializing = true;
+        this.importPending = Boolean(new URLSearchParams(window.location.search).get('import'));
         this.controlId = 0;
         this.scenarioRows = [];
         this.special7bRules = [
@@ -72,6 +81,12 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.comparisonSection = this.element('[data-role="comparison-section"]');
         this.comparisonBody = this.element('[data-role="comparison-body"]');
         this.comparisonToggle = this.element('[data-role="comparison-toggle"]');
+        this.saveStatus = this.element('[data-role="save-status"]');
+        this.calculationStatus = this.element('[data-role="calculation-status"]');
+        this.actionMessage = this.element('[data-role="action-message"]');
+        this.dialogElement = this.element('[data-role="action-dialog"]');
+        this.actionDialog = new bootstrap.Modal(this.dialogElement);
+        this.workspaceDialog = new bootstrap.Modal(this.element('[data-role="workspace-dialog"]'));
 
         this.initTables();
         this.bindControls();
@@ -82,7 +97,11 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.resetStaticInputs();
         const draft = this.loadDraft();
         if(draft) {
-            this.applyScenario(draft);
+            this.activeScenario = draft.version === 2 ? draft.activeScenario || null : null;
+            this.savedSnapshot = draft.version === 2 ? draft.savedSnapshot || null : null;
+            this.baselineSnapshot = draft.version === 2 ? draft.baselineSnapshot || null : null;
+            this.restoredUnsaved = draft.version === 2 ? Boolean(draft.restoredUnsaved) : true;
+            this.applyScenario(draft.version === 2 ? draft.scenario : draft);
         } else {
             this.addDefaultRows();
             this.syncDepreciationStartDefaults(true);
@@ -95,8 +114,12 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.syncParkingValueIncreaseDefault(false);
         this.syncDisagioYear(false);
         this.updateGuidanceState();
+        this.initializing = false;
+        this.baselineSnapshot ??= this.scenarioFingerprint(this.collectScenario());
+        this.saveDraft();
         this.calculate();
-        this.refreshScenarioList().then(() => this.importSharedScenarioFromUrl());
+        this.refreshScenarioList(this.activeScenario?.id).then(() => this.importSharedScenarioFromUrl()).catch(error => this.showActionMessage(error.message || error, 'danger'));
+        this.getRootElement().querySelectorAll('[data-bs-toggle="tooltip"]').forEach(element => new bootstrap.Tooltip(element));
     }
 
     initTables()
@@ -175,20 +198,17 @@ class GUI_InvestmentCalculator extends GUI_Module
     bindControls()
     {
         this.element('[data-role="new-scenario"]').addEventListener('click', () => this.newScenario());
-        this.element('[data-role="calculate"]').addEventListener('click', () => this.calculate());
+        this.element('[data-role="retry-calculation"]').addEventListener('click', () => this.calculate(true));
         this.element('[data-role="save"]').addEventListener('click', () => this.saveScenario());
-        this.element('[data-role="rename-scenario"]').addEventListener('click', () => this.renameScenario());
+        this.element('[data-role="save-copy"]').addEventListener('click', () => this.saveScenarioCopy());
         this.element('[data-role="delete-scenario"]').addEventListener('click', () => this.deleteScenario());
         this.element('[data-role="load"]').addEventListener('click', () => this.loadSelectedScenario());
-        this.element('[data-role="copy-workspace-link"]').addEventListener('click', () => this.copyWorkspaceLink());
+        this.getRootElement().querySelectorAll('[data-role="copy-workspace-link"]').forEach(button => button.addEventListener('click', () => this.copyWorkspaceLink(button)));
+        this.element('[data-role="bookmark-workspace"]').addEventListener('click', event => this.showWorkspaceDialog(event.currentTarget));
         this.element('[data-role="share-scenario"]').addEventListener('click', () => this.shareScenario());
         this.scenarioGroupList.addEventListener('change', () => this.renderScenarioOptions());
-        this.scenarioList.addEventListener('change', () => {
-            if(this.scenarioList.value) {
-                this.loadSelectedScenario();
-            }
-        });
-        this.element('[data-role="compare"]').addEventListener('click', () => this.compareScenarios());
+        this.scenarioList.addEventListener('change', () => this.updateToolbarState());
+        this.element('[data-role="compare"]').addEventListener('click', () => this.runAction(() => this.compareScenarios()));
         this.comparisonToggle.addEventListener('click', () => this.setComparisonCollapsed(!this.comparisonSection.classList.contains('is-collapsed')));
         this.element('[data-role="add-parking"]').addEventListener('click', () => this.addParkingRow({label: 'Stellplatz', buildingSharePercent: 80, landSharePercent: 20, depreciationMode: 'building_basis', includedInPurchasePrice: true}));
         this.element('[data-role="add-construction-interest"]').addEventListener('click', () => this.addConstructionInterestRow({label: 'Bauzeitzinsen', year: Number(this.value('property.purchaseYear') || 2026), deductible: true}));
@@ -196,36 +216,29 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('keydown', event => this.preventInvalidIntegerKey(event));
         this.getRootElement().addEventListener('wheel', event => this.releaseNumberInputOnWheel(event), {capture: true});
         this.getRootElement().addEventListener('paste', event => this.normalizeIntegerInputSoon(event.target));
-        this.getRootElement().addEventListener('input', event => {
-            this.normalizeIntegerInput(event.target, false);
-            this.markAutoFieldManualFromEvent(event.target);
-            if(event.target.dataset.path === 'property.purchaseYear') this.syncDisagioYear(false);
-            this.syncDepreciationStartDefaultsFromEvent(event.target);
-            this.syncBuildingBasisFromEvent(event.target);
-            this.syncSpecial7bDefaultsFromEvent(event.target, false);
-            this.syncParkingValueIncreaseDefaultFromEvent(event.target);
-            this.updateParkingDepreciationControlsFromEvent(event.target);
-            this.updateTaxModeState();
-            this.updateDependentFieldStates();
-            this.updateGuidanceState();
-            this.saveDraft();
-            this.scheduleCalculate();
-        });
-        this.getRootElement().addEventListener('change', event => {
-            this.normalizeIntegerInput(event.target, true);
-            this.markAutoFieldManualFromEvent(event.target);
-            if(event.target.dataset.path === 'property.purchaseYear') this.syncDisagioYear(false);
-            this.syncDepreciationStartDefaultsFromEvent(event.target);
-            this.syncBuildingBasisFromEvent(event.target);
-            this.syncSpecial7bDefaultsFromEvent(event.target, true);
-            this.syncParkingValueIncreaseDefaultFromEvent(event.target);
-            this.updateParkingDepreciationControlsFromEvent(event.target);
-            this.updateTaxModeState();
-            this.updateDependentFieldStates();
-            this.updateGuidanceState();
-            this.saveDraft();
-            this.calculate();
-        });
+        this.getRootElement().addEventListener('input', event => this.handleScenarioInput(event, false));
+        this.getRootElement().addEventListener('change', event => this.handleScenarioInput(event, true));
+        this.form.addEventListener('submit', event => event.preventDefault());
+    }
+
+    handleScenarioInput(event, committed)
+    {
+        const input = event.target;
+        if(!input.matches('input[data-path], select[data-path], input[data-field], select[data-field]')) return;
+        this.normalizeIntegerInput(input, committed);
+        this.markAutoFieldManualFromEvent(input);
+        if(input.dataset.path === 'property.purchaseYear') this.syncDisagioYear(false);
+        this.syncDepreciationStartDefaultsFromEvent(input);
+        this.syncBuildingBasisFromEvent(input);
+        this.syncSpecial7bDefaultsFromEvent(input, committed);
+        this.syncParkingValueIncreaseDefaultFromEvent(input);
+        this.updateParkingDepreciationControlsFromEvent(input);
+        this.updateTaxModeState();
+        this.updateDependentFieldStates();
+        this.updateGuidanceState();
+        const scenario = this.collectScenario();
+        this.saveDraft(scenario);
+        if(!['scenarioName', 'scenarioGroup'].includes(input.dataset.path)) this.scheduleCalculate(committed, scenario);
     }
 
     initInfoPopovers()
@@ -248,6 +261,8 @@ class GUI_InvestmentCalculator extends GUI_Module
     createFieldHelpTexts()
     {
         return {
+            scenarioName: 'Name dieser Berechnungsvariante. Bei einem aktiven Szenario übernimmt Speichern auch die Umbenennung. Eine neue Variante entsteht über Als Kopie speichern.',
+            scenarioGroup: 'Bündelt mehrere Berechnungsvarianten zu einer Immobilie. Eine Änderung wird mit Speichern übernommen.',
             'property.livingArea': 'Die Wohnfläche wird für Mietkennzahlen und die §7b-Obergrenze je Quadratmeter verwendet.',
             'property.apartmentPurchasePrice': 'Kaufpreis der Wohnung ohne separat erfasste Stellplätze und ohne Küche/Möbel.',
             'property.otherPurchasePrice': 'Weitere kaufpreisrelevante Bestandteile, die wie die Wohnung in Grund- und Gebäudeanteil aufgeteilt werden.',
@@ -635,6 +650,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.syncSpecial7bCalculatedCosts();
         this.updateGuidanceState();
         this.saveDraft();
+        this.scheduleCalculate();
     }
 
     addConstructionInterestRow(data = {})
@@ -650,6 +666,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateRepeaterNames(this.constructionInterestList, 'constructionInterest_yearlyEntries');
         this.updateGuidanceState();
         this.saveDraft();
+        this.scheduleCalculate();
     }
 
     addLoanRow(data = {})
@@ -676,6 +693,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateRepeaterNames(this.loanList, 'loans');
         this.updateGuidanceState();
         this.saveDraft();
+        this.scheduleCalculate();
     }
 
     row(type, fields)
@@ -870,10 +888,19 @@ class GUI_InvestmentCalculator extends GUI_Module
         input.value = String(number);
     }
 
-    scheduleCalculate()
+    scheduleCalculate(immediate = false, scenario = null)
     {
+        if(this.initializing || this.restoringDraft) return;
+        const fingerprint = this.scenarioFingerprint(scenario ?? this.collectScenario(), true);
+        if(fingerprint === this.desiredCalculationFingerprint && !immediate) return;
+        if(fingerprint !== this.desiredCalculationFingerprint) {
+            this.desiredCalculationFingerprint = fingerprint;
+            this.calculationRevision += 1;
+            this.setCalculationStatus('Wird aktualisiert', 'busy');
+        }
         window.clearTimeout(this.calculateTimer);
-        this.calculateTimer = window.setTimeout(() => this.calculate(), 250);
+        if(immediate) this.calculate(false, scenario);
+        else this.calculateTimer = window.setTimeout(() => this.calculate(), 250);
     }
 
     markAutoFieldManualFromEvent(input)
@@ -1438,93 +1465,236 @@ class GUI_InvestmentCalculator extends GUI_Module
         }
     }
 
-    async calculate()
+    scenarioFingerprint(scenario, calculationOnly = false)
+    {
+        const normalized = this.clone(scenario);
+        // Readonly result fields must not mark freshly loaded inputs as changed.
+        this.getRootElement().querySelectorAll('[data-path][readonly]').forEach(input => this.setPath(normalized, input.dataset.path, undefined));
+        if(calculationOnly) {
+            delete normalized.scenarioName;
+            delete normalized.scenarioGroup;
+        }
+        return JSON.stringify(normalized);
+    }
+
+    hasUnsavedChanges(scenario = null)
+    {
+        return this.restoredUnsaved || this.scenarioFingerprint(scenario ?? this.collectScenario()) !== (this.savedSnapshot || this.baselineSnapshot);
+    }
+
+    updateToolbarState(scenario = null)
+    {
+        if(this.initializing) return;
+        const dirty = this.hasUnsavedChanges(scenario);
+        const active = this.activeScenario;
+        this.saveStatus.textContent = active
+            ? `${active.name} · ${dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'+(active.updatedAt ? ' · '+this.formatTimestamp(active.updatedAt) : '')}`
+            : `Neuer Entwurf · ${dirty ? 'ungespeicherte Änderungen' : 'noch nicht auf dem Server gespeichert'}`;
+        this.getRootElement().querySelectorAll('[data-scenario-action]').forEach(button => button.disabled = this.operationBusy);
+        this.element('[data-role="load"]').disabled = this.operationBusy || !this.scenarioList.value;
+        this.element('[data-role="delete-scenario"]').disabled = this.operationBusy || !active;
+        this.element('[data-role="bookmark-workspace"]').disabled = this.importPending;
+        this.getRootElement().querySelectorAll('[data-role="copy-workspace-link"]').forEach(button => button.disabled = this.importPending);
+        this.element('[data-role="open-controls"]').inert = this.operationBusy;
+        this.element('[data-role="edit-controls"]').inert = this.operationBusy;
+        this.form.inert = this.operationBusy;
+    }
+
+    showActionMessage(message, level = 'success')
+    {
+        window.clearTimeout(this.actionMessageTimer);
+        this.actionMessage.textContent = message;
+        this.actionMessage.className = `alert alert-${level} py-2 mb-0`;
+        this.actionMessage.hidden = false;
+        if(level === 'success') this.actionMessageTimer = window.setTimeout(() => this.actionMessage.hidden = true, 5000);
+    }
+
+    async runAction(action)
+    {
+        if(this.operationBusy) return false;
+        const returnFocus = document.activeElement.closest('.dropdown')?.querySelector('[data-bs-toggle="dropdown"]') || document.activeElement;
+        this.operationBusy = true;
+        this.updateToolbarState();
+        try {
+            await action();
+            return true;
+        } catch(error) {
+            this.showActionMessage(error.message || error, 'danger');
+            return false;
+        } finally {
+            this.operationBusy = false;
+            this.updateToolbarState();
+            if(document.activeElement === document.body || document.activeElement.closest('[data-role="action-dialog"]')) {
+                const target = returnFocus === document.body ? this.element('[data-role="save"]') : returnFocus;
+                if(target.isConnected && target.getClientRects().length && !target.disabled) target.focus();
+            }
+        }
+    }
+
+    showDialog({title, message, inputValue = null, choices, focusTarget = null})
+    {
+        if(this.dialogPending) return Promise.resolve(null);
+        this.dialogPending = true;
+        const returnFocus = focusTarget || document.activeElement.closest('.dropdown')?.querySelector('[data-bs-toggle="dropdown"]') || document.activeElement;
+        const input = this.element('[data-role="dialog-input"]');
+        this.dialogElement.querySelector('.modal-title').textContent = title;
+        this.element('[data-role="dialog-message"]').textContent = message;
+        this.element('[data-role="dialog-input-label"]').hidden = inputValue === null;
+        input.disabled = inputValue === null;
+        input.value = inputValue || '';
+        const buttons = this.element('[data-role="dialog-buttons"]');
+        buttons.replaceChildren();
+        let result = null;
+        const promise = new Promise(resolve => {
+            this.dialogElement.addEventListener('hidden.bs.modal', () => {
+                this.dialogPending = false;
+                if(returnFocus.isConnected && returnFocus.getClientRects().length) returnFocus.focus();
+                resolve(result);
+            }, {once: true});
+        });
+        choices.forEach(({id, label, variant = 'secondary'}) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `btn btn-${variant}`;
+            button.disabled = true;
+            button.dataset.choice = id;
+            button.textContent = label;
+            button.addEventListener('click', () => {
+                if(id !== 'cancel' && inputValue !== null && !input.value.trim()) {
+                    input.value = '';
+                    input.reportValidity();
+                    return;
+                }
+                result = id === 'cancel' ? null : {id, value: input.value.trim()};
+                this.actionDialog.hide();
+            });
+            buttons.append(button);
+        });
+        input.onkeydown = event => {
+            if(event.key === 'Enter') {
+                event.preventDefault();
+                buttons.querySelector('button:last-child').click();
+            }
+        };
+        this.dialogElement.addEventListener('shown.bs.modal', () => {
+            buttons.querySelectorAll('button').forEach(button => button.disabled = false);
+            if(inputValue !== null) {input.focus(); input.select();}
+            else buttons.querySelector('button').focus();
+        }, {once: true});
+        this.actionDialog.show();
+        return promise;
+    }
+
+    async confirmDiscard(focusTarget = null)
+    {
+        if(!this.hasUnsavedChanges()) return true;
+        const answer = await this.showDialog({
+            title: 'Ungespeicherte Änderungen',
+            focusTarget,
+            message: 'Die aktuellen Eingaben sind noch nicht auf dem Server gespeichert.',
+            choices: [
+                {id: 'cancel', label: 'Abbrechen'},
+                {id: 'discard', label: 'Verwerfen', variant: 'outline-danger'},
+                {id: 'save', label: 'Speichern und fortfahren', variant: 'primary'},
+            ],
+        });
+        return answer?.id === 'discard' || (answer?.id === 'save' && await this.saveScenario());
+    }
+
+    setCalculationStatus(text, state)
+    {
+        this.calculationStatus.textContent = text;
+        this.calculationStatus.dataset.state = state;
+        this.element('[data-role="retry-calculation"]').hidden = state !== 'error';
+    }
+
+    async calculate(force = false, scenario = null)
     {
         window.clearTimeout(this.calculateTimer);
-        const scenario = this.collectScenario();
+        scenario ??= this.collectScenario();
+        const fingerprint = this.scenarioFingerprint(scenario, true);
+        if(fingerprint !== this.desiredCalculationFingerprint) {
+            this.desiredCalculationFingerprint = fingerprint;
+            this.calculationRevision += 1;
+        }
+        if(!force && fingerprint === this.lastCalculationFingerprint && this.lastCalculationRevision === this.calculationRevision) return;
+        this.lastCalculationFingerprint = fingerprint;
+        this.lastCalculationRevision = this.calculationRevision;
         const sequence = ++this.calculateSequence;
+        const revision = this.calculationRevision;
+        this.setCalculationStatus('Wird aktualisiert', 'busy');
         try {
             const result = await this.request('calculateScenario', {scenario}, {method: 'POST'});
-            if(sequence === this.calculateSequence) {
+            if(sequence === this.calculateSequence && revision === this.calculationRevision) {
                 this.render(result);
+                const invalid = (result.warnings || []).some(warning => warning.level === 'danger');
+                this.setCalculationStatus(invalid ? 'Eingaben prüfen' : 'Aktuell', invalid ? 'invalid' : 'current');
             }
         } catch(error) {
-            if(sequence !== this.calculateSequence) return;
+            if(sequence !== this.calculateSequence || revision !== this.calculationRevision) return;
+            this.lastCalculationFingerprint = null;
             this.lastResultSummary = {};
             [this.summary, this.purchaseBreakdown, this.acquisitionBreakdown, this.financingBreakdown, this.totalBreakdown, this.saleBreakdown, this.depreciationBasisBreakdown, this.calculationBreakdown].forEach(element => element.innerHTML = '');
             this.yearTable.clearData();
             this.rowCount.textContent = 'Keine gültige Berechnung';
             this.updateGuidanceState();
             this.warnings.innerHTML = `<div class="alert alert-danger">${this.escape(error.message || error)}</div>`;
+            this.setCalculationStatus('Aktualisierung fehlgeschlagen', 'error');
         }
     }
 
-    async saveScenario()
+    async saveScenario({copyName = null} = {})
     {
         const scenario = this.collectScenario();
-        this.saveDraft();
-        const response = await this.request('saveScenario', {workspaceKey: this.workspaceKey, name: scenario.scenarioName, scenario}, {method: 'POST'});
-        await this.refreshScenarioList(response.id);
-        this.warnings.innerHTML = '<div class="alert alert-success">Szenario gespeichert.</div>';
+        scenario.scenarioName = (copyName ?? scenario.scenarioName).trim();
+        if(!scenario.scenarioName) {
+            this.showActionMessage('Bitte einen Szenarionamen eingeben.', 'warning');
+            this.getRootElement().querySelector('[data-path="scenarioName"]').focus();
+            return false;
+        }
+        const existingId = copyName === null ? this.activeScenario?.id || null : null;
+        return this.runAction(async () => {
+            const response = await this.request('saveScenario', {workspaceKey: this.workspaceKey, name: scenario.scenarioName, scenario, existingId}, {method: 'POST'});
+            this.setInputValue(this.getRootElement().querySelector('[data-path="scenarioName"]'), response.name);
+            this.setInputValue(this.getRootElement().querySelector('[data-path="scenarioGroup"]'), response.group);
+            this.activeScenario = {id: response.id, name: response.name, updatedAt: response.updatedAt};
+            this.savedSnapshot = this.scenarioFingerprint(this.collectScenario());
+            this.restoredUnsaved = false;
+            this.saveDraft();
+            this.showActionMessage(`Szenario "${response.name}" gespeichert.`);
+            await this.refreshScenarioList(response.id).catch(() => this.showActionMessage('Gespeichert; die Auswahlliste konnte nicht aktualisiert werden.', 'warning'));
+        });
     }
 
-    async renameScenario()
+    async saveScenarioCopy()
     {
-        const id = this.scenarioList.value;
-        if(!id) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Bitte zuerst ein gespeichertes Szenario auswählen.</div>';
-            return;
-        }
-
-        const currentName = this.value('scenarioName') || this.scenarioRows.find(row => row.id === id)?.name || '';
-        const newName = window.prompt('Neuer Szenarioname:', currentName);
-        if(newName === null) {
-            return;
-        }
-        if(newName.trim() === '') {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Der neue Szenarioname darf nicht leer sein.</div>';
-            return;
-        }
-
-        const response = await this.request('renameScenario', {workspaceKey: this.workspaceKey, id, newName: newName.trim()}, {method: 'POST'});
-        if(!response.id) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Szenario konnte nicht umbenannt werden.</div>';
-            return;
-        }
-
-        const nameInput = this.getRootElement().querySelector('[data-path="scenarioName"]');
-        if(nameInput) {
-            this.setInputValue(nameInput, response.name || newName);
-        }
-        this.saveDraft();
-        await this.refreshScenarioList(response.id);
-        this.warnings.innerHTML = `<div class="alert alert-success">Szenario in "${this.escape(response.name || newName)}" umbenannt.</div>`;
+        if(this.operationBusy) return false;
+        const answer = await this.showDialog({
+            title: 'Als Kopie speichern', message: 'Die aktuellen Eingaben werden als neue Variante gespeichert. Das Original bleibt unverändert.',
+            focusTarget: this.element('[data-role="save-copy"]'),
+            inputValue: `${this.value('scenarioName') || 'Szenario'} (Kopie)`,
+            choices: [{id: 'cancel', label: 'Abbrechen'}, {id: 'copy', label: 'Kopie speichern', variant: 'primary'}],
+        });
+        return answer ? this.saveScenario({copyName: answer.value}) : false;
     }
 
     async deleteScenario()
     {
-        const id = this.scenarioList.value;
-        if(!id) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Bitte zuerst ein gespeichertes Szenario auswählen.</div>';
-            return;
-        }
-
-        const row = this.scenarioRows.find(item => item.id === id);
-        const name = row?.name || id;
-        if(!window.confirm(`Szenario "${name}" wirklich löschen?`)) {
-            return;
-        }
-
-        const response = await this.request('deleteScenario', {workspaceKey: this.workspaceKey, id}, {method: 'POST'});
-        if(!response.deleted) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Szenario konnte nicht gelöscht werden.</div>';
+        if(!this.activeScenario || this.operationBusy) return;
+        const {id, name} = this.activeScenario;
+        const answer = await this.showDialog({title: 'Szenario löschen', message: `Szenario "${name}" wirklich löschen? Die aktuellen Eingaben bleiben als Browser-Entwurf erhalten.`, focusTarget: this.element('.rei-actions [data-bs-toggle="dropdown"]'), choices: [{id: 'cancel', label: 'Abbrechen'}, {id: 'delete', label: 'Szenario löschen', variant: 'danger'}]});
+        if(!answer) return;
+        return this.runAction(async () => {
+            const response = await this.request('deleteScenario', {workspaceKey: this.workspaceKey, id}, {method: 'POST'});
+            if(!response.deleted) throw new Error('Szenario konnte nicht gelöscht werden.');
+            this.activeScenario = null;
+            this.savedSnapshot = null;
+            this.restoredUnsaved = true;
+            this.saveDraft();
+            this.scenarioList.value = '';
+            this.showActionMessage('Gespeichertes Szenario gelöscht. Die Eingaben bleiben als ungespeicherter Browser-Entwurf erhalten.');
             await this.refreshScenarioList();
-            return;
-        }
-
-        this.scenarioList.value = '';
-        await this.refreshScenarioList();
-        this.warnings.innerHTML = '<div class="alert alert-success">Gespeichertes Szenario gelöscht. Die aktuellen Eingaben bleiben als ungespeicherter Entwurf erhalten.</div>';
+        });
     }
 
     async refreshScenarioList(selectedId = '')
@@ -1537,6 +1707,14 @@ class GUI_InvestmentCalculator extends GUI_Module
             this.scenarioGroupList.value = selectedRow.group || 'Ohne Gruppe';
         }
         this.renderScenarioOptions(selectedId || this.scenarioList.value);
+        if(this.activeScenario && !this.scenarioRows.some(row => row.id === this.activeScenario.id)) {
+            this.activeScenario = null;
+            this.savedSnapshot = null;
+            this.restoredUnsaved = true;
+            this.saveDraft();
+            this.showActionMessage('Das zuletzt aktive Szenario existiert nicht mehr. Deine Eingaben bleiben als Entwurf erhalten.', 'warning');
+        }
+        this.updateToolbarState();
     }
 
     renderScenarioGroups()
@@ -1559,78 +1737,125 @@ class GUI_InvestmentCalculator extends GUI_Module
     {
         const group = this.scenarioGroupList.value;
         const rows = group ? this.scenarioRows.filter(row => (row.group || 'Ohne Gruppe') === group) : this.scenarioRows;
-        this.scenarioList.innerHTML = '<option value="">Gespeichertes Szenario</option>';
+        this.scenarioList.innerHTML = `<option value="">${rows.length ? 'Szenario auswählen' : 'Keine Szenarien gespeichert'}</option>`;
         rows.forEach(row => {
             const option = document.createElement('option');
             option.value = row.id;
             const groupLabel = group ? '' : `${row.group || 'Ohne Gruppe'} / `;
-            option.textContent = row.updatedAt ? `${groupLabel}${row.name} (${this.formatTimestamp(row.updatedAt)})` : `${groupLabel}${row.name}`;
+            option.textContent = `${groupLabel}${row.name}`;
             this.scenarioList.append(option);
         });
         if(selectedId && rows.some(row => row.id === selectedId)) {
             this.scenarioList.value = selectedId;
         }
+        this.updateToolbarState();
     }
 
     async loadSelectedScenario()
     {
-        const id = this.scenarioList.value;
-        if(!id) {
-            return;
-        }
-        const response = await this.request('loadScenario', {workspaceKey: this.workspaceKey, id}, {method: 'POST'});
-        if(!response.scenario) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Szenario konnte nicht geladen werden.</div>';
-            return;
-        }
-        this.applyScenario(response.scenario);
-        this.calculate();
-        this.warnings.innerHTML = `<div class="alert alert-success">Szenario "${this.escape(response.name || id)}" geladen.</div>`;
+        let id = this.scenarioList.value;
+        const previousActiveId = this.activeScenario?.id;
+        if(!id || this.operationBusy || !await this.confirmDiscard(this.element('[data-role="load"]'))) return false;
+        if(id === previousActiveId && this.activeScenario) id = this.activeScenario.id;
+        return this.runAction(async () => {
+            const response = await this.request('loadScenario', {workspaceKey: this.workspaceKey, id}, {method: 'POST'});
+            if(!response.scenario) throw new Error('Szenario konnte nicht geladen werden.');
+            this.applyScenario(response.scenario);
+            this.activeScenario = {id: response.id, name: response.name, updatedAt: response.updatedAt};
+            this.savedSnapshot = this.scenarioFingerprint(this.collectScenario());
+            this.restoredUnsaved = false;
+            this.saveDraft();
+            this.calculate();
+            this.showActionMessage(`Szenario "${response.name}" geladen.`);
+        });
     }
 
-    async copyWorkspaceLink()
+    async copyWorkspaceLink(focusTarget = null)
     {
-        await this.copyText(this.urlWithParams({ws: this.workspaceKey, import: null}));
-        this.warnings.innerHTML = '<div class="alert alert-success">Workspace-Link kopiert.</div>';
+        const copied = await this.copyText(this.workspaceUrl());
+        if(copied) this.showActionMessage('Workspace-Link kopiert. Bewahre ihn als privaten Zugang sicher auf.');
+        else {
+            this.showWorkspaceDialog(focusTarget);
+            this.element('[data-role="workspace-link-value"]').select();
+            this.showActionMessage('Automatisches Kopieren ist nicht verfügbar. Bitte den privaten Link im Dialog manuell kopieren.', 'warning');
+        }
+    }
+
+    workspaceUrl()
+    {
+        return this.urlWithParams({ws: this.workspaceKey, import: null});
+    }
+
+    showWorkspaceDialog(focusTarget = null)
+    {
+        const url = this.workspaceUrl();
+        if(!this.importPending) window.history.replaceState({}, '', url);
+        const input = this.element('[data-role="workspace-link-value"]');
+        input.value = url;
+        const dialog = this.element('[data-role="workspace-dialog"]');
+        if(!dialog.classList.contains('show')) {
+            const returnFocus = focusTarget || document.activeElement;
+            dialog.addEventListener('shown.bs.modal', () => {input.focus(); input.select();}, {once: true});
+            dialog.addEventListener('hidden.bs.modal', () => {
+                if(returnFocus.isConnected && returnFocus.getClientRects().length) returnFocus.focus();
+            }, {once: true});
+        }
+        this.workspaceDialog.show();
     }
 
     async shareScenario()
     {
         const scenario = this.collectScenario();
-        const response = await this.request('shareScenario', {name: scenario.scenarioName, scenario}, {method: 'POST'});
-        if(!response.token) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Szenario-Link konnte nicht erzeugt werden.</div>';
-            return;
-        }
-        await this.copyText(this.urlWithParams({import: response.token, ws: null}));
-        this.warnings.innerHTML = '<div class="alert alert-success">Import-Link für eine Kopie wurde kopiert.</div>';
+        return this.runAction(async () => {
+            const response = await this.request('shareScenario', {name: scenario.scenarioName, scenario}, {method: 'POST'});
+            if(!response.token) throw new Error('Szenario-Link konnte nicht erzeugt werden.');
+            const url = this.urlWithParams({import: response.token, ws: null});
+            if(await this.copyText(url)) this.showActionMessage('Import-Link für eine Szenariokopie kopiert. Er enthält nicht deinen privaten Workspace-Zugang.');
+            else {
+                await this.showDialog({title: 'Szenario teilen', message: url, inputValue: null, focusTarget: this.element('.rei-actions [data-bs-toggle="dropdown"]'), choices: [{id: 'cancel', label: 'Schließen'}]});
+                this.showActionMessage('Bitte den angezeigten Import-Link manuell kopieren.', 'warning');
+            }
+        });
     }
 
     async importSharedScenarioFromUrl()
     {
         const token = new URLSearchParams(window.location.search).get('import');
         if(!/^[a-f0-9]{48}$/.test(token || '')) {
+            this.importPending = false;
+            this.updateToolbarState();
             return;
         }
-        const response = await this.request('importSharedScenario', {workspaceKey: this.workspaceKey, token}, {method: 'POST'});
-        if(!response.scenario) {
-            this.warnings.innerHTML = '<div class="alert alert-warning">Import-Link konnte nicht geladen werden.</div>';
-            return;
+        try {
+            if(!await this.confirmDiscard()) return;
+            await this.runAction(async () => {
+                const response = await this.request('importSharedScenario', {workspaceKey: this.workspaceKey, token}, {method: 'POST'});
+                if(!response.scenario) throw new Error('Import-Link konnte nicht geladen werden.');
+                this.applyScenario(response.scenario);
+                this.activeScenario = {id: response.id, name: response.name};
+                this.savedSnapshot = this.scenarioFingerprint(this.collectScenario());
+                this.restoredUnsaved = false;
+                this.saveDraft();
+                await this.refreshScenarioList(response.id);
+                this.calculate();
+                this.showActionMessage(`Szenario "${response.name}" als Kopie importiert.`);
+            });
+        } finally {
+            this.importPending = false;
+            window.history.replaceState({}, '', this.workspaceUrl());
+            this.updateToolbarState();
         }
-        this.applyScenario(response.scenario);
-        await this.refreshScenarioList(response.id);
-        this.calculate();
-        window.history.replaceState({}, '', this.urlWithParams({ws: this.workspaceKey, import: null}));
-        this.warnings.innerHTML = `<div class="alert alert-success">Szenario "${this.escape(response.name || response.id)}" als Kopie importiert.</div>`;
     }
 
     async copyText(text)
     {
-        if(navigator.clipboard?.writeText) {
+        try {
+            if(!navigator.clipboard?.writeText) return false;
             await navigator.clipboard.writeText(text);
-            return;
+            return true;
+        } catch(error) {
+            return false;
         }
-        window.prompt('Link kopieren:', text);
     }
 
     urlWithParams(changes)
@@ -1730,16 +1955,21 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.saveDraft();
     }
 
-    newScenario()
+    async newScenario()
     {
-        if(!window.confirm('Aktuelles Szenario verwerfen und eine neue Immobilie erfassen?')) {
-            return;
-        }
-        localStorage.removeItem(this.draftKey);
+        if(this.operationBusy || !await this.confirmDiscard(this.element('[data-role="new-scenario"]'))) return false;
         this.expandAllSections();
         this.resetForNewScenario();
+        this.activeScenario = null;
+        this.savedSnapshot = null;
+        this.restoredUnsaved = false;
+        this.baselineSnapshot = this.scenarioFingerprint(this.collectScenario());
+        this.actionMessage.hidden = true;
+        this.comparisonTable.clearData();
+        this.setComparisonCollapsed(true);
         this.saveDraft();
         this.calculate();
+        return true;
     }
 
     resetForNewScenario()
@@ -1848,7 +2078,7 @@ class GUI_InvestmentCalculator extends GUI_Module
     newScenarioDefaults()
     {
         return {
-            scenarioName: 'Neues Szenario',
+            scenarioName: '',
             scenarioGroup: '',
             'property.state': 'BY',
             'property.purchaseYear': 2026,
@@ -1931,16 +2161,25 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.normalizeIntegerInput(input, true);
     }
 
-    saveDraft()
+    saveDraft(scenario = null)
     {
-        if(this.restoringDraft) {
+        if(this.restoringDraft || this.initializing) {
             return;
         }
+        scenario ??= this.collectScenario();
         try {
-            localStorage.setItem(this.draftKey, JSON.stringify(this.collectScenario()));
+            localStorage.setItem(this.draftKey, JSON.stringify({
+                version: 2,
+                scenario,
+                activeScenario: this.activeScenario,
+                savedSnapshot: this.savedSnapshot,
+                baselineSnapshot: this.baselineSnapshot,
+                restoredUnsaved: this.restoredUnsaved,
+            }));
         } catch(error) {
             // Ignore storage quota/private-mode failures; server-side calculation still works.
         }
+        this.updateToolbarState(scenario);
     }
 
     loadDraft()

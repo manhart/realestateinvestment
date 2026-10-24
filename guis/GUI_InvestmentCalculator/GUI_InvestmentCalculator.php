@@ -41,9 +41,9 @@ final class GUI_InvestmentCalculator extends GUI_Module
         return (new InvestmentCalculator())->calculate($input)->toArray();
     }
 
-    protected function saveScenario(string $workspaceKey, string $name, array $scenario): array
+    protected function saveScenario(string $workspaceKey, string $name, array $scenario, ?string $existingId = null): array
     {
-        return (new ScenarioRepository())->save($workspaceKey, $name, $scenario);
+        return (new ScenarioRepository())->save($workspaceKey, $name, $scenario, $existingId);
     }
 
     protected function renameScenario(string $workspaceKey, string $id, string $newName): array

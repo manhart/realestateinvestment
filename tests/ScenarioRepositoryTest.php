@@ -86,6 +86,97 @@ final class ScenarioRepositoryTest extends TestCase
         self::assertSame('Basis', $repository->load($this->workspaceB, 'basis')['name']);
     }
 
+    public function testSavingActiveScenarioUpdatesNameGroupAndInputsWithoutCopy(): void
+    {
+        $repository = new ScenarioRepository();
+        $saved = $repository->save($this->workspaceA, 'Basis', ['scenarioName' => 'Basis', 'scenarioGroup' => 'A']);
+        $updated = $repository->save($this->workspaceA, 'Neue Variante', ['scenarioName' => 'Neue Variante', 'scenarioGroup' => 'B', 'rent' => ['apartmentMonthlyRent' => 750]], $saved['id']);
+
+        self::assertSame('neue-variante', $updated['id']);
+        self::assertSame([], $repository->load($this->workspaceA, 'basis'));
+        self::assertCount(1, $repository->list($this->workspaceA));
+        $loaded = $repository->load($this->workspaceA, $updated['id']);
+        self::assertSame('B', $loaded['group']);
+        self::assertSame('Neue Variante', $loaded['scenario']['scenarioName']);
+        self::assertSame(750, $loaded['scenario']['rent']['apartmentMonthlyRent']);
+        self::assertArrayHasKey('updatedAt', $updated);
+    }
+
+    public function testSavingSameActiveIdUpdatesItsFile(): void
+    {
+        $repository = new ScenarioRepository();
+        $saved = $repository->save($this->workspaceA, 'Basis', []);
+        $repository->save($this->workspaceA, 'Basis', ['scenarioGroup' => 'B'], $saved['id']);
+
+        self::assertCount(1, $repository->list($this->workspaceA));
+        self::assertSame('B', $repository->load($this->workspaceA, 'basis')['group']);
+    }
+
+    public function testCreatingCopyPreservesOriginalInputs(): void
+    {
+        $repository = new ScenarioRepository();
+        $repository->save($this->workspaceA, 'Basis', ['value' => 1]);
+        $repository->save($this->workspaceA, 'Basis Kopie', ['value' => 2]);
+
+        self::assertCount(2, $repository->list($this->workspaceA));
+        self::assertSame(1, $repository->load($this->workspaceA, 'basis')['scenario']['value']);
+        self::assertSame(2, $repository->load($this->workspaceA, 'basis-kopie')['scenario']['value']);
+    }
+
+    public function testCreationAndRenameRejectSlugCollisionsWithoutOverwriting(): void
+    {
+        $repository = new ScenarioRepository();
+        $repository->save($this->workspaceA, 'Basis A', ['value' => 1]);
+        $repository->save($this->workspaceA, 'Andere', ['value' => 2]);
+
+        foreach([null, 'andere'] as $existingId) {
+            try {
+                $repository->save($this->workspaceA, 'Basis-A', ['value' => 999], $existingId);
+                self::fail('A colliding name must not overwrite an existing scenario.');
+            } catch(\InvalidArgumentException $exception) {
+                self::assertStringContainsString('existiert bereits', $exception->getMessage());
+            }
+            self::assertSame(1, $repository->load($this->workspaceA, 'basis-a')['scenario']['value']);
+            self::assertSame(2, $repository->load($this->workspaceA, 'andere')['scenario']['value']);
+            self::assertCount(2, $repository->list($this->workspaceA));
+        }
+    }
+
+    public function testCannotUpdateScenarioFromAnotherWorkspaceOrMissingId(): void
+    {
+        $repository = new ScenarioRepository();
+        $repository->save($this->workspaceA, 'Basis', ['value' => 1]);
+        try {
+            $repository->save($this->workspaceB, 'Neue Variante', ['value' => 2], 'basis');
+            self::fail('An active ID must exist in the current workspace.');
+        } catch(\InvalidArgumentException $exception) {
+            self::assertStringContainsString('existiert nicht mehr', $exception->getMessage());
+        }
+        self::assertSame([], $repository->list($this->workspaceB));
+        self::assertSame(1, $repository->load($this->workspaceA, 'basis')['scenario']['value']);
+    }
+
+    public function testEmptyScenarioNameIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new ScenarioRepository())->save($this->workspaceA, '  ', []);
+    }
+
+    public function testEncodingFailurePreservesOriginalWhenUpdatingOrRenaming(): void
+    {
+        $repository = new ScenarioRepository();
+        $repository->save($this->workspaceA, 'Basis', ['value' => 1]);
+        foreach(['Basis', 'Neuer Name'] as $name) {
+            try {
+                $repository->save($this->workspaceA, $name, ['invalid' => "\xB1"], 'basis');
+                self::fail('Invalid JSON input must not produce a successful save.');
+            } catch(\JsonException) {
+                self::assertSame(1, $repository->load($this->workspaceA, 'basis')['scenario']['value']);
+                self::assertCount(1, $repository->list($this->workspaceA));
+            }
+        }
+    }
+
     private function removeDirectory(string $directory): void
     {
         if(!is_dir($directory)) {

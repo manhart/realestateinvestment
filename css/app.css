@@ -49,27 +49,108 @@ body {
 }
 
 .rei-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
+    display: grid;
+    gap: 14px;
     padding: 16px;
     margin-bottom: 14px;
 }
 
 .rei-toolbar h1 {
     font-size: 1.35rem;
-    margin: 0 0 8px;
+    margin: 0;
+}
+
+.rei-toolbar-heading,
+.rei-toolbar-row,
+.rei-workspace-actions,
+.rei-toolbar-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    min-width: 0;
+}
+
+.rei-toolbar-heading {
+    justify-content: space-between;
+    align-items: start;
+}
+
+.rei-workspace-actions {
+    justify-content: flex-end;
+    font-size: 0.82rem;
+}
+
+.rei-workspace-actions > span {
+    font-weight: 600;
+}
+
+.rei-toolbar-row {
+    align-items: end;
+    padding-top: 12px;
+    border-top: 1px solid #edf0f4;
+}
+
+.rei-toolbar-field {
+    flex: 1 1 210px;
+    min-width: 0;
+    color: #445064;
+    font-size: 0.82rem;
+}
+
+.rei-toolbar-field--wide {
+    flex-basis: 300px;
+}
+
+.rei-toolbar-field .form-control,
+.rei-toolbar-field .form-select {
+    margin-top: 4px;
+}
+
+.rei-toolbar-status {
+    justify-content: space-between;
+    color: #637083;
+    font-size: 0.8rem;
+}
+
+.rei-toolbar [data-role="action-message"] {
+    font-size: 0.82rem;
+    border: 0;
+}
+
+[data-role="calculation-status"][data-state="busy"]::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    border: 2px solid #b8c1cd;
+    border-top-color: #334155;
+    border-radius: 50%;
+    animation: rei-spin 0.8s linear infinite;
+}
+
+@keyframes rei-spin {
+    to { transform: rotate(360deg); }
+}
+
+[data-role="calculation-status"][data-state="current"] { color: #237443; }
+[data-role="calculation-status"][data-state="invalid"],
+[data-role="calculation-status"][data-state="error"] { color: #a13a27; }
+
+.rei-module .modal-body {
+    overflow-wrap: anywhere;
+}
+
+.rei-workspace-url {
+    font-size: 0.82rem;
+    resize: vertical;
 }
 
 .rei-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-}
-
-.rei-scenario-select {
-    width: min(280px, 100%);
 }
 
 .rei-alerts {
@@ -442,10 +523,8 @@ body {
     transform: rotate(-45deg) translateX(-1px);
 }
 
-.rei-section-body[hidden],
-.rei-result-body[hidden],
-.rei-disagio-details[hidden] {
-    display: none;
+.rei-module [hidden] {
+    display: none !important;
 }
 
 .rei-repeater {
@@ -826,7 +905,6 @@ body {
 }
 
 @media (max-width: 720px) {
-    .rei-toolbar,
     .rei-header__inner {
         align-items: stretch;
         flex-direction: column;
@@ -838,6 +916,23 @@ body {
 
     .rei-actions .btn {
         flex: 1 1 160px;
+    }
+
+    .rei-actions .dropdown {
+        flex: 1 1 120px;
+    }
+
+    .rei-actions .dropdown > button {
+        width: 100%;
+    }
+
+    .rei-workspace-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .rei-workspace-actions > span {
+        width: 100%;
     }
 
     .rei-reference-grid {
