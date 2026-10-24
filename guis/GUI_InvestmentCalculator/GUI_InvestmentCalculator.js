@@ -270,7 +270,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.otherFinancingCosts': 'Einmalige Kreditkosten außerhalb des Pfandrechts, z. B. Bankgebühren.',
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'Steuert, ob Notar/Grundbuch sofort als Werbungskosten oder über die AfA-Basis berücksichtigt werden.',
             'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz von Pfandrecht und sonstigen Kreditkosten als Werbungskosten.',
-            'settings.initialEquityAmount': 'Vom Anleger zu Beginn eingebrachtes Eigenkapital. Es wird nicht automatisch aus Bauzeitzinsen oder negativen Cashflows erhöht.',
+            'settings.initialEquityAmount': 'Vom Anleger zu Beginn bereitgestellter Liquiditätstopf. Unterdeckungen werden daraus gedeckt, bevor zusätzliche Kapitalnachschüsse zählen. Bereits im Cashflow erfasste Ausgaben werden nicht nochmals als Aufwand abgezogen. Unverbrauchtes Anfangskapital wird am Ende zurückgeführt.',
             'settings.autoSpecialRepaymentMode': 'Optional können positive echte Cashflows zur Sondertilgung genutzt werden. Opportunitätszinsen sind keine verfügbare Liquidität.',
             'settings.discountRatePercent': 'Vergleichsrendite für Barwert und Future Value. Sie ändert nicht den nominalen Netto-Vermögenseffekt.',
             'depreciation.startYear': 'Startjahr der normalen AfA. Bei Neubau wird es automatisch aus der Fertigstellung vorbelegt.',
@@ -1022,7 +1022,8 @@ class GUI_InvestmentCalculator extends GUI_Module
             + (includeParkingInSale ? parkingPurchase * Math.pow(1 + parkingValueIncrease / 100, saleYears) : 0);
         const salePrice = Number(this.lastResultSummary.salePrice || 0) || salePriceFallback;
         const totalInvestmentCost = Number(this.lastResultSummary.totalInvestmentCost || this.lastResultSummary.totalCosts || 0);
-        const financingGap = totalInvestmentCost > 0 ? loanPrincipalTotal - totalInvestmentCost : 0;
+        const initialEquityAmount = Number(this.value('settings.initialEquityAmount') || 0);
+        const financingGap = totalInvestmentCost > 0 ? loanPrincipalTotal + initialEquityAmount - totalInvestmentCost : 0;
 
         return {
             apartment,
@@ -1074,7 +1075,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             loanPrincipalTotal,
             constructionInterestTotal,
             financingGapText: totalInvestmentCost > 0
-                ? `Darlehen ${this.eur(loanPrincipalTotal)} · Gesamtaufwand ${this.eur(totalInvestmentCost)} · Differenz ${this.eur(financingGap)}`
+                ? `Darlehen ${this.eur(loanPrincipalTotal)} + Eigenkapital ${this.eur(initialEquityAmount)} · Aufwand ${this.eur(totalInvestmentCost)} · Differenz ${this.eur(financingGap)}`
                 : `Darlehenssumme aktuell: ${this.eur(loanPrincipalTotal)}`,
             autoRepaymentText: this.value('settings.autoSpecialRepaymentMode') === 'positive_cashflow_after_tax'
                 ? 'positive Cashflows werden zur Sondertilgung genutzt'
@@ -1999,6 +2000,7 @@ class GUI_InvestmentCalculator extends GUI_Module
                 {label: 'nicht finanzierte BZZ', value: this.eur(summary.constructionInterestCashTotal)},
                 {label: 'Kapitalnachschüsse', value: this.eur(summary.equityCapitalCalls), calcKey: 'calc-kapitalnachschuesse'},
                 {label: 'eingesetztes EK', value: this.eur(summary.totalEquityInvested), calcKey: 'calc-eingesetztes-eigenkapital'},
+                {label: 'unverbrauchtes Anfangs-EK', value: this.eur(summary.unusedInitialEquity)},
                 {label: 'Netto-Endvermögen', value: this.eur(summary.equityDistributions), calcKey: 'calc-netto-endvermoegen'},
                 {label: 'Vermögensgewinn nach EK', value: this.eur(summary.equityNetGain), calcKey: 'calc-netto-vermoegensgewinn-nach-ek'},
                 {label: 'EK-Multiple', value: `${this.dec(summary.equityMultiple, 2)}x`, calcKey: 'calc-ek-multiple'},

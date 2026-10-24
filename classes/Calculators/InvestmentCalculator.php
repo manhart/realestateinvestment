@@ -35,7 +35,9 @@ final class InvestmentCalculator
         $acquisition = $this->acquisitionCosts($scenario, $purchasePrice, $initialDebt);
         $constructionInterestTotal = $this->constructionInterestTotal($scenario->constructionInterest);
         $totalCosts = $purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] + $constructionInterestTotal;
-        $nonFinancedOneTimeCosts = max($purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] - $initialDebt, 0);
+        // Earmarked credit funds cannot also finance the purchase and its fees.
+        $financedConstructionInterest = $constructionInterestTotal - $this->constructionInterestCashTotal($scenario->constructionInterest);
+        $nonFinancedOneTimeCosts = max($purchasePrice + $acquisition['withoutFinancing'] + $acquisition['financing'] + $financedConstructionInterest - $initialDebt, 0);
         $manualBuildingBasis = $scenario->depreciation->buildingBasisOverrideEnabled && $scenario->depreciation->buildingBasis > 0;
         $autoObjectBuildingBasis = $this->buildingDepreciationBasis($costAllocation, $acquisition);
         $objectBuildingBasis = $manualBuildingBasis
@@ -559,6 +561,7 @@ final class InvestmentCalculator
         $fvConservative = 0.0;
         $fvLiquidity = 0.0;
         $equityContributions = max($initialEquityAmount, 0);
+        $remainingInitialEquity = $equityContributions;
         $equityCapitalCalls = 0.0;
         $equityDistributions = 0.0;
         $lastIndex = max(count($rows) - 1, 0);
@@ -570,18 +573,18 @@ final class InvestmentCalculator
             $fvConservative += $cashflow * ((1 + $discountRate) ** ($lastIndex - $index));
             $fvLiquidity += $cashflow > 0 ? $cashflow * ((1 + $discountRate) ** ($lastIndex - $index)) : $cashflow;
 
-            if($row->netCashflowAfterTax < 0) {
-                $equityCapitalCalls += -$row->netCashflowAfterTax;
-            } else {
-                $equityDistributions += $row->netCashflowAfterTax;
-            }
-            if($row->saleProceedsAfterDebt < 0) {
-                $equityCapitalCalls += -$row->saleProceedsAfterDebt;
-            } else {
-                $equityDistributions += $row->saleProceedsAfterDebt;
+            foreach([$row->netCashflowAfterTax, $row->saleProceedsAfterDebt] as $payment) {
+                if($payment < 0) {
+                    $coveredByInitialEquity = min(-$payment, $remainingInitialEquity);
+                    $remainingInitialEquity -= $coveredByInitialEquity;
+                    $equityCapitalCalls += -$payment - $coveredByInitialEquity;
+                } else {
+                    $equityDistributions += $payment;
+                }
             }
         }
 
+        $equityDistributions += $remainingInitialEquity;
         $totalEquityInvested = $equityContributions + $equityCapitalCalls;
         $equityNetGain = $equityDistributions - $totalEquityInvested;
         $equityMultiple = $totalEquityInvested > 0 ? $equityDistributions / $totalEquityInvested : 0.0;
@@ -596,6 +599,8 @@ final class InvestmentCalculator
             'futureValueLiquidity' => $fvLiquidity,
             'fvLeverageLiquidity' => $initialDebt > 0 ? $fvLiquidity / $initialDebt : 0.0,
             'initialEquityAmount' => $equityContributions,
+            'initialEquityUsed' => $equityContributions - $remainingInitialEquity,
+            'unusedInitialEquity' => $remainingInitialEquity,
             'equityCapitalCalls' => $equityCapitalCalls,
             'totalEquityInvested' => $totalEquityInvested,
             'equityDistributions' => $equityDistributions,
@@ -871,8 +876,8 @@ final class InvestmentCalculator
             $rows[] = [
                 'group' => 'Liquidität',
                 'label' => 'CF nach Steuer erstes volles Jahr',
-                'formula' => 'Miete - Ausgaben - Annuität + Steuerwirkung',
-                'values' => $firstOperatingRow->rent.' - '.$firstOperatingRow->expenses.' - '.$firstOperatingRow->annuity.' + '.$firstOperatingRow->taxEffect,
+                'formula' => 'Miete - Ausgaben - Annuität - eigene Einmalkosten - nicht finanzierte BZZ + Steuerwirkung - Auto-Sondertilgung',
+                'values' => $firstOperatingRow->rent.' - '.$firstOperatingRow->expenses.' - '.$firstOperatingRow->annuity.' - '.$firstOperatingRow->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $firstOperatingRow->year).' + '.$firstOperatingRow->taxEffect.' - '.$firstOperatingRow->autoSpecialRepayment,
                 'result' => $firstOperatingRow->netCashflowAfterTax,
             ];
             $rows[] = [
@@ -1099,8 +1104,8 @@ final class InvestmentCalculator
         ], [
             'group' => 'Eigenkapital',
             'label' => 'Kapitalnachschüsse',
-            'formula' => 'Summe negativer CF nach Steuer; nicht finanzierte Bauzeitzinsen sind darin enthalten',
-            'values' => 'Summe abs(min(CF nach Steuer, 0))',
+            'formula' => 'Unterdeckungen aus Cashflow und Verkauf, soweit der Anfangs-Eigenkapitaltopf nicht ausreicht',
+            'values' => 'Negative Zahlungen zuerst aus unverbrauchtem Anfangs-Eigenkapital decken',
             'result' => $metrics['equityCapitalCalls'],
         ], [
             'group' => 'Eigenkapital',
@@ -1110,8 +1115,14 @@ final class InvestmentCalculator
             'result' => $metrics['totalEquityInvested'],
         ], [
             'group' => 'Eigenkapital',
+            'label' => 'Unverbrauchtes Anfangs-Eigenkapital',
+            'formula' => 'Nicht für Unterdeckungen benötigtes Anfangskapital; wird am Ende als Kapitalrückfluss berücksichtigt',
+            'values' => $metrics['initialEquityAmount'].' - '.$metrics['initialEquityUsed'],
+            'result' => $metrics['unusedInitialEquity'],
+        ], [
+            'group' => 'Eigenkapital',
             'label' => 'Netto-Endvermögen',
-            'formula' => 'positive CF nach Steuer + Verkaufserlös nach Schuld',
+            'formula' => 'positive Rückflüsse aus Cashflow und Verkauf + unverbrauchtes Anfangs-Eigenkapital',
             'values' => 'Summe positiver Rückflüsse',
             'result' => $metrics['equityDistributions'],
         ], [
@@ -1470,7 +1481,7 @@ final class InvestmentCalculator
             'Barwert-Hebel-/Effizienz = NPV / Anfangsschuld',
             'FV konservativ = Σ CF_t × (1 + r)^(T - t)',
             'FV liquiditätsorientiert = Σ positive CF_t × (1 + r)^(T - t) + Σ negative CF_t',
-            'eingesetztes Eigenkapital = Anfangs-Eigenkapital + Kapitalnachschüsse aus negativen CF nach Steuer',
+            'eingesetztes Eigenkapital = Anfangs-Eigenkapital + zusätzliche Kapitalnachschüsse nach Verbrauch des Anfangstopfs',
             'EK-Multiple = Netto-Endvermögen / eingesetztes Eigenkapital',
             'EK-Rendite gesamt = Netto-Vermögensgewinn nach EK / eingesetztes Eigenkapital',
             'Miete = (Monatsmiete × Monate × Mietsteigerungsfaktor + sonstige Einnahmen) × (1 - Leerstand)',

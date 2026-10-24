@@ -162,8 +162,9 @@ final class InvestmentCalculatorTest extends TestCase
         $negativeCashflows = array_sum(array_map(static fn(array $row): float => min($row['netCashflowAfterTax'], 0), $result['yearlyRows']));
         $positiveCashflows = array_sum(array_map(static fn(array $row): float => max($row['netCashflowAfterTax'], 0), $result['yearlyRows']));
         $saleProceeds = array_sum(array_column($result['yearlyRows'], 'saleProceedsAfterDebt'));
-        $expectedCapitalCalls = -$negativeCashflows;
-        $expectedDistributions = $positiveCashflows + $saleProceeds;
+        $expectedCapitalCalls = max(-$negativeCashflows - 50000, 0);
+        $unusedInitialEquity = max(50000 + $negativeCashflows, 0);
+        $expectedDistributions = $positiveCashflows + $saleProceeds + $unusedInitialEquity;
         $expectedTotalEquity = 50000 + $expectedCapitalCalls;
 
         self::assertSame(310000.0, $result['summary']['initialDebt']);
@@ -172,6 +173,7 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertEqualsWithDelta($expectedTotalEquity, $result['summary']['totalEquityInvested'], 0.01);
         self::assertEqualsWithDelta($expectedDistributions, $result['summary']['equityDistributions'], 0.01);
         self::assertEqualsWithDelta($expectedDistributions - $expectedTotalEquity, $result['summary']['equityNetGain'], 0.01);
+        self::assertEqualsWithDelta($result['summary']['netWorthEffect'], $result['summary']['equityNetGain'], 0.01);
         self::assertEqualsWithDelta($result['summary']['equityDistributions'] / $result['summary']['totalEquityInvested'], $result['summary']['equityMultiple'], 0.0001);
         self::assertEqualsWithDelta($result['summary']['equityNetGain'] / $result['summary']['totalEquityInvested'], $result['summary']['equityTotalReturn'], 0.0001);
 
@@ -317,7 +319,7 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertEqualsWithDelta(1186.81, $result['yearlyRows'][0]['deductibleExpenses'], 0.01);
         self::assertEqualsWithDelta(4596.61, $result['yearlyRows'][1]['deductibleExpenses'], 0.01);
         self::assertEqualsWithDelta(0, $result['yearlyRows'][2]['deductibleExpenses'], 0.01);
-        self::assertEqualsWithDelta($baselineResult['yearlyRows'][0]['netCashflowBeforeTax'] - 1186.81, $result['yearlyRows'][0]['netCashflowBeforeTax'], 0.01);
+        self::assertEqualsWithDelta($baselineResult['yearlyRows'][0]['netCashflowBeforeTax'] - 1186.81 - 4596.61, $result['yearlyRows'][0]['netCashflowBeforeTax'], 0.01);
         self::assertEqualsWithDelta($baselineResult['yearlyRows'][1]['netCashflowBeforeTax'], $result['yearlyRows'][1]['netCashflowBeforeTax'], 0.01);
         self::assertEqualsWithDelta($baselineResult['yearlyRows'][2]['netCashflowBeforeTax'] - 4756.86, $result['yearlyRows'][2]['netCashflowBeforeTax'], 0.01);
         self::assertEqualsWithDelta($baselineResult['summary']['totalCosts'] + 10540.28, $result['summary']['totalCosts'], 0.01);
@@ -341,11 +343,60 @@ final class InvestmentCalculatorTest extends TestCase
         ];
         $result = $this->calculate($scenario)->toArray();
 
-        self::assertEqualsWithDelta($baselineResult['yearlyRows'][0]['netCashflowBeforeTax'], $result['yearlyRows'][0]['netCashflowBeforeTax'], 0.01);
+        self::assertEqualsWithDelta($baselineResult['yearlyRows'][0]['netCashflowBeforeTax'] - 5783.42, $result['yearlyRows'][0]['netCashflowBeforeTax'], 0.01);
+        self::assertEqualsWithDelta(5783.42, $result['yearlyRows'][0]['oneTimeCashCosts'] - $baselineResult['yearlyRows'][0]['oneTimeCashCosts'], 0.01);
         self::assertEqualsWithDelta($baselineResult['yearlyRows'][1]['netCashflowBeforeTax'], $result['yearlyRows'][1]['netCashflowBeforeTax'], 0.01);
         self::assertEqualsWithDelta(5783.42, $result['summary']['constructionInterestTotal'], 0.01);
         self::assertEqualsWithDelta(0, $result['summary']['constructionInterestCashTotal'], 0.01);
         self::assertEqualsWithDelta(5783.42, $result['summary']['constructionInterestFinancedTotal'], 0.01);
+    }
+
+    public function testInitialEquityDoesNotDuplicatePurchaseCashOutflow(): void
+    {
+        foreach([0, 5000, 10000, 25000] as $initialEquity) {
+            $scenario = $this->cashOnlyScenario();
+            $scenario['loans'][0]['principal'] = 90000;
+            $scenario['settings']['initialEquityAmount'] = $initialEquity;
+            $result = $this->calculate($scenario)->toArray();
+            $summary = $result['summary'];
+
+            self::assertEqualsWithDelta(-10000, $result['yearlyRows'][0]['netCashflowAfterTax'], 0.01);
+            self::assertEqualsWithDelta(10000, $result['yearlyRows'][2]['saleProceedsAfterDebt'], 0.01);
+            self::assertEqualsWithDelta(0, $summary['netWorthEffect'], 0.01);
+            self::assertEqualsWithDelta(0, $summary['equityNetGain'], 0.01);
+            self::assertEqualsWithDelta(max(10000 - $initialEquity, 0), $summary['equityCapitalCalls'], 0.01);
+            self::assertEqualsWithDelta(max($initialEquity - 10000, 0), $summary['unusedInitialEquity'], 0.01);
+            self::assertEqualsWithDelta(max($initialEquity, 10000), $summary['totalEquityInvested'], 0.01);
+            self::assertEqualsWithDelta(max($initialEquity, 10000), $summary['equityDistributions'], 0.01);
+        }
+    }
+
+    private function cashOnlyScenario(): array
+    {
+        $scenario = $this->baseScenario();
+        $scenario['property']['apartmentPurchasePrice'] = 100000;
+        $scenario['property']['completionMonth'] = 1;
+        $scenario['property']['rentStartMonth'] = 1;
+        $scenario['property']['saleYear'] = 2028;
+        $scenario['parkingUnits'] = [];
+        $scenario['rent']['apartmentMonthlyRent'] = 0;
+        $scenario['expenses'] = [];
+        $scenario['acquisitionCosts'] = [
+            'realEstateTransferTaxPercent' => 0,
+            'notaryPercent' => 0,
+            'landRegisterPurchasePercent' => 0,
+            'landRegisterLienPercent' => 0,
+        ];
+        $scenario['loans'][0]['principal'] = 100000;
+        $scenario['loans'][0]['interestRatePercent'] = 0;
+        $scenario['loans'][0]['initialRepaymentPercent'] = 0;
+        $scenario['loans'][0]['repaymentRateAfterInterestOnlyPercent'] = 0;
+        $scenario['depreciation']['degressiveActive'] = false;
+        $scenario['depreciation']['linearRatePercent'] = 0;
+        $scenario['sale']['annualValueIncreasePercent'] = 0;
+        $scenario['sale']['sellingCostsPercent'] = 0;
+        $scenario['settings']['discountRatePercent'] = 0;
+        return $scenario;
     }
 
     public function testTaxDeductibleOperatingExpensesExcludeReserves(): void
