@@ -21,8 +21,8 @@
             </div>
         </div>
         <div class="rei-toolbar-row" data-role="edit-controls">
-            <label class="rei-toolbar-field">Szenarioname<input class="form-control form-control-sm" data-path="scenarioName" value="Basisszenario" placeholder="z. B. Basis oder 1 % Tilgung" autocomplete="off"></label>
-            <label class="rei-toolbar-field rei-toolbar-field--wide">Objekt / Gruppe (optional)<input class="form-control form-control-sm" data-path="scenarioGroup" value="" placeholder="z. B. Leipzig: Musterstraße 12" autocomplete="off"></label>
+            <label class="rei-toolbar-field">Szenarioname / Wohneinheit<input class="form-control form-control-sm" data-path="scenarioName" value="Basisszenario" placeholder="z. B. Haus B, WE 01 (Basis)" autocomplete="off"></label>
+            <label class="rei-toolbar-field rei-toolbar-field--wide">Gruppe / Ort: Straße Hausnummer (optional)<input class="form-control form-control-sm" data-path="scenarioGroup" value="" placeholder="z. B. Leipzig: Musterstraße 12" autocomplete="off"></label>
             <div class="rei-actions">
                 <button class="btn btn-primary btn-sm" type="button" data-role="save" data-scenario-action><i class="bi bi-save" aria-hidden="true"></i> Speichern</button>
                 <button class="btn btn-outline-secondary btn-sm" type="button" data-role="save-copy" data-scenario-action><i class="bi bi-files" aria-hidden="true"></i> Als Kopie speichern</button>
@@ -70,12 +70,12 @@
             <summary>Hilfe</summary>
             <div class="rei-scenario-help">
                 <article>
-                    <h3>Szenario</h3>
-                    <p>Der Szenarioname ist der gespeicherte Variantenname, z. B. Basis, konservativ oder 1 % Tilgung.</p>
+                    <h3>Szenarioname / Wohneinheit</h3>
+                    <p>Verwende am besten die Hausbezeichnung zusammen mit der Wohnungsnummer, z. B. „Haus B, WE 01 (Basis)“. So erkennst du die Wohneinheit eindeutig wieder. Für weitere Berechnungsvarianten ergänze einen Zusatz wie „1 % Tilgung“ oder „konservativ“. Die gemeinsame Immobilie oder das Bauprojekt fasst du über die Gruppe zusammen.</p>
                 </article>
                 <article>
-                    <h3>Objekt / Gruppe</h3>
-                    <p>Die Gruppe bündelt mehrere Szenarien zu einer Immobilie. Beim Laden kannst du nach dieser Gruppe filtern.</p>
+                    <h3>Gruppe / Ort: Straße Hausnummer</h3>
+                    <p>Fasse die Wohneinheiten und Berechnungsvarianten einer Immobilie in einer Gruppe zusammen. Als Gruppenname eignet sich der Standort im Format „Ort: Straße Hausnummer“, z. B. „Leipzig: Musterstraße 12“. Der Name bleibt frei wählbar. Mit Speichern wird die Gruppenzuordnung übernommen. Beim Laden kannst du nach dieser Gruppe filtern.</p>
                 </article>
                 <article>
                     <h3>Speichern und Laden</h3>
@@ -91,7 +91,7 @@
                 </article>
                 <article>
                     <h3>Gruppe ändern</h3>
-                    <p>Wenn du nur Objekt / Gruppe änderst und speicherst, bleibt das Szenario gleich und wird in die neue Gruppe einsortiert.</p>
+                    <p>Wenn du nur den Gruppennamen änderst und speicherst, bleibt das Szenario gleich und wird in die neue Gruppe einsortiert.</p>
                 </article>
                 <article>
                     <h3>Workspace-Link</h3>

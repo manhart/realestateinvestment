@@ -261,8 +261,8 @@ class GUI_InvestmentCalculator extends GUI_Module
     createFieldHelpTexts()
     {
         return {
-            scenarioName: 'Name dieser Berechnungsvariante. Bei einem aktiven Szenario übernimmt Speichern auch die Umbenennung. Eine neue Variante entsteht über Als Kopie speichern.',
-            scenarioGroup: 'Bündelt mehrere Berechnungsvarianten zu einer Immobilie. Eine Änderung wird mit Speichern übernommen.',
+            scenarioName: 'Verwende am besten die Hausbezeichnung zusammen mit der Wohnungsnummer, z. B. „Haus B, WE 01 (Basis)“. So erkennst du die Wohneinheit eindeutig wieder. Für weitere Berechnungsvarianten ergänze einen Zusatz wie „1 % Tilgung“ oder „konservativ“. Die gemeinsame Immobilie oder das Bauprojekt fasst du über die Gruppe zusammen. Bei einem aktiven Szenario übernimmt Speichern auch die Umbenennung. Eine neue Variante entsteht über Als Kopie speichern.',
+            scenarioGroup: 'Fasse die Wohneinheiten und Berechnungsvarianten einer Immobilie in einer Gruppe zusammen. Als Gruppenname eignet sich der Standort im Format „Ort: Straße Hausnummer“, z. B. „Leipzig: Musterstraße 12“. Der Name bleibt frei wählbar. Mit Speichern wird die Gruppenzuordnung übernommen.',
             'property.livingArea': 'Die Wohnfläche wird für Mietkennzahlen und die §7b-Obergrenze je Quadratmeter verwendet.',
             'property.apartmentPurchasePrice': 'Kaufpreis der Wohnung ohne separat erfasste Stellplätze und ohne Küche/Möbel.',
             'property.otherPurchasePrice': 'Weitere kaufpreisrelevante Bestandteile, die wie die Wohnung in Grund- und Gebäudeanteil aufgeteilt werden.',
