@@ -14,6 +14,7 @@ $App = RealEstateInvestmentApp::getInstance();
 try {
     $App->setup([
         'application.name' => 'realestateinvestment',
+        'application.version' => RealEstateInvestmentApp::VERSION,
         'application.title' => 'Immobilien-Kapitalanlage-Rechner',
         'application.launchModule' => GUI_Frame::class,
     ]);

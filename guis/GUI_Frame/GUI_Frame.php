@@ -5,12 +5,41 @@ namespace realestateinvestment\guis\GUI_Frame;
 
 use pool\classes\GUI\Builtin\GUI_CustomFrame;
 use pool\includes\Resources;
+use realestateinvestment\classes\Support\Changelog;
+use Template;
 
 final class GUI_Frame extends GUI_CustomFrame
 {
     protected array $templates = [
         'stdout' => 'tpl_frame.html',
     ];
+
+    public function prepareContent(): void
+    {
+        parent::prepareContent();
+        $this->Template->setVar('APP_VERSION', $this->Weblication->getVersion(), Template::CONVERT_HTMLSPECIALCHARS);
+        $this->prepareChangelog(Changelog::read(DIR_APP_ROOT.'/CHANGELOG.md'));
+    }
+
+    private function prepareChangelog(array $releases): void
+    {
+        if(!$releases) $this->Template->newBlock('CHANGELOG_EMPTY');
+
+        foreach($releases as $release) {
+            $this->Template->newBlock('CHANGELOG_RELEASE')?->setVars([
+                'RELEASE_TITLE' => $release['version'] === 'Unreleased' ? 'Noch nicht veröffentlicht' : 'Version '.$release['version'],
+                'RELEASE_DATE' => $release['date'] ? ' · '.$release['date'] : '',
+            ], Template::CONVERT_HTMLSPECIALCHARS);
+
+            foreach($release['groups'] as $group) {
+                $this->Template->newBlock('CHANGELOG_CATEGORY')?->setVar('CATEGORY_TITLE', $group['title'], Template::CONVERT_HTMLSPECIALCHARS);
+                foreach($group['entries'] as $entry) {
+                    $this->Template->newBlock('CHANGELOG_ENTRY')?->setVar('ENTRY_TEXT', $entry, Template::CONVERT_HTMLSPECIALCHARS);
+                }
+            }
+        }
+        $this->Template->leaveBlock();
+    }
 
     public function loadFiles(): static
     {

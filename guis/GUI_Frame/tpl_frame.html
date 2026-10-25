@@ -10,12 +10,35 @@
 <header class="rei-header">
     <div class="rei-header__inner">
         <a class="rei-brand" href="[pool\guis\GUI_Url\GUI_Url]">Immobilien-Kapitalanlage-Rechner</a>
-        <span class="rei-path">pofolio.local/manhart/realestateinvestment</span>
+        <button class="rei-version" type="button" data-bs-toggle="modal" data-bs-target="#rei-changelog" title="Version und Änderungen anzeigen" aria-label="Version {APP_VERSION}: Änderungen anzeigen"><i class="bi bi-clock-history" aria-hidden="true"></i> v{APP_VERSION}</button>
     </div>
 </header>
 <main class="rei-main">
     [realestateinvestment\guis\GUI_InvestmentCalculator\GUI_InvestmentCalculator]
 </main>
+<div class="modal fade" id="rei-changelog" tabindex="-1" aria-labelledby="rei-changelog-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="rei-changelog-title">Version und Änderungen</h2>
+                <button class="rei-info-button ms-auto flex-shrink-0" type="button" data-bs-dismiss="modal" title="Schließen" aria-label="Schließen"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </div>
+            <div class="modal-body rei-changelog">
+                <!-- BLOCK CHANGELOG_EMPTY --><p>Das Changelog ist derzeit nicht verfügbar.</p><!-- END CHANGELOG_EMPTY -->
+                <!-- BLOCK CHANGELOG_RELEASE -->
+                <section class="rei-changelog-release">
+                    <h3>{RELEASE_TITLE}<small>{RELEASE_DATE}</small></h3>
+                    <!-- BLOCK CHANGELOG_CATEGORY -->
+                    <h4>{CATEGORY_TITLE}</h4>
+                    <ul><!-- BLOCK CHANGELOG_ENTRY --><li>{ENTRY_TEXT}</li><!-- END CHANGELOG_ENTRY --></ul>
+                    <!-- END CHANGELOG_CATEGORY -->
+                </section>
+                <!-- END CHANGELOG_RELEASE -->
+            </div>
+            <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Schließen</button></div>
+        </div>
+    </div>
+</div>
 {ScriptFilesAtTheEnd}
 </body>
 </html>

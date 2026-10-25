@@ -4,6 +4,19 @@ Real estate investment calculator for leveraged residential property scenarios i
 
 This is a POOL framework application for calculating and evaluating residential real estate investment scenarios with financing, taxes, depreciation, cash flows, NPV, future value, and efficiency metrics.
 
+## Version and Changelog
+
+The small version button in the app header opens the change history.
+[CHANGELOG.md](CHANGELOG.md) is the single source for its German release
+notes. Pending changes stay under `Unreleased`; numbered entries summarize
+documented versions, not individual commits.
+
+The app version is defined by `RealEstateInvestmentApp::VERSION` and passed
+to POOL's application configuration. For a version update, update that
+constant and move the relevant pending notes into a matching dated entry.
+Use patch versions for fixes and minor versions for new features. Version
+metadata does not change scenario or browser-draft formats.
+
 ## Local path
 
 - App path: `/virtualweb/manhart/realestateinvestment`

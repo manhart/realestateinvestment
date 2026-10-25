@@ -7,6 +7,8 @@ use pool\classes\Core\Weblication;
 
 final class RealEstateInvestmentApp extends Weblication
 {
+    public const string VERSION = '0.1.0';
+
     public function setup(array $settings = []): static
     {
         parent::setup($settings);
