@@ -55,6 +55,7 @@ final class YearlyCalculationResult
         public float $oneTimeCashCosts = 0.0,
         public float $debtYield = 0.0,
         public float $dscr = 0.0,
+        public float $financingSurplus = 0.0,
     ) {}
 
     public function toArray(): array

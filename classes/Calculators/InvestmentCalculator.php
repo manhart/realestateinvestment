@@ -48,8 +48,10 @@ final class InvestmentCalculator
         // Earmarked credit funds cannot also finance the purchase and its fees.
         $financedConstructionInterest = $constructionInterestTotal - $this->constructionInterestCashTotal($scenario->constructionInterest);
         $financedDisagio = $costInput->disagioFinanced ? $costInput->disagioAmount : 0.0;
-        $nonFinancedOneTimeCosts = max($purchasePrice + $acquisition['withoutFinancing']
-            + $acquisition['financingWithoutDisagio'] + $financedConstructionInterest + $financedDisagio - $initialDebt, 0);
+        $financingBalance = $initialDebt - ($purchasePrice + $acquisition['withoutFinancing']
+            + $acquisition['financingWithoutDisagio'] + $financedConstructionInterest + $financedDisagio);
+        $nonFinancedOneTimeCosts = max(-$financingBalance, 0);
+        $financingSurplus = max($financingBalance, 0);
         $manualBuildingBasis = $scenario->depreciation->buildingBasisOverrideEnabled && $scenario->depreciation->buildingBasis > 0;
         $autoObjectBuildingBasis = $this->buildingDepreciationBasis($costAllocation, $acquisition);
         $objectBuildingBasis = $manualBuildingBasis
@@ -147,12 +149,13 @@ final class InvestmentCalculator
             $row->effectiveTaxRate = abs($row->rentalTaxableIncome) > 0.005 ? abs($row->taxEffect / $row->rentalTaxableIncome) : 0.0;
 
             $row->oneTimeCashCosts = ($year === $startYear ? $nonFinancedOneTimeCosts : 0.0) + $row->disagioCashAmount;
+            $row->financingSurplus = $year === $startYear ? $financingSurplus : 0.0;
             $cashConstructionInterest = $this->constructionInterestCashForYear($scenario->constructionInterest, $year);
-            $row->netCashflowBeforeTax = $row->rent - $row->expenses - $row->annuity - $cashConstructionInterest - $row->oneTimeCashCosts;
+            $row->netCashflowBeforeTax = $row->rent - $row->expenses - $row->annuity - $cashConstructionInterest - $row->oneTimeCashCosts + $row->financingSurplus;
             $row->netCashflowAfterTaxBeforeAutoSpecialRepayment = $row->netCashflowBeforeTax + $row->taxEffect;
             $autoSpecialRepayment = $this->autoSpecialRepaymentAmount(
                 $scenario->settings,
-                $row->netCashflowAfterTaxBeforeAutoSpecialRepayment,
+                $row->netCashflowAfterTaxBeforeAutoSpecialRepayment - $row->financingSurplus,
             );
             if($autoSpecialRepayment > 0) {
                 $applied = $this->loanCalculator->applyYearEndSpecialRepayment($scenario->loans, $loanStates, $year, $endYear, $autoSpecialRepayment, $scenario->property->saleMonth);
@@ -198,7 +201,7 @@ final class InvestmentCalculator
             'dscr' => $firstOperatingRow ? $this->scaleEvaluator->evaluateDscr($firstOperatingRow->dscr) : ['label' => 'n/a', 'variant' => 'secondary'],
         ];
         return new InvestmentCalculationResult(
-            $this->summary($scenario, $purchasePrice, $acquisition, $costAllocation, $totalCosts, $initialDebt, $firstOperatingRow, $metrics, $special7b, $objectBuildingBasis, $parkingIncludedInBuildingBasis),
+            $this->summary($scenario, $purchasePrice, $acquisition, $costAllocation, $totalCosts, $initialDebt, $firstOperatingRow, $metrics, $special7b, $objectBuildingBasis, $parkingIncludedInBuildingBasis, $financingSurplus),
             $metrics,
             $scales,
             $this->scaleEvaluator->legend(),
@@ -682,7 +685,7 @@ final class InvestmentCalculator
         return null;
     }
 
-    private function summary(RealEstateInvestmentScenario $scenario, float $purchasePrice, array $acquisition, array $costAllocation, float $totalCosts, float $initialDebt, ?YearlyCalculationResult $firstOperatingRow, array $metrics, array $special7b, float $objectBuildingBasis, float $parkingIncludedInBuildingBasis): array
+    private function summary(RealEstateInvestmentScenario $scenario, float $purchasePrice, array $acquisition, array $costAllocation, float $totalCosts, float $initialDebt, ?YearlyCalculationResult $firstOperatingRow, array $metrics, array $special7b, float $objectBuildingBasis, float $parkingIncludedInBuildingBasis, float $financingSurplus): array
     {
         $annualRent = $firstOperatingRow?->rent ?? 0.0;
         $monthlyRent = $annualRent / max($firstOperatingRow?->rentedMonths ?? 12, 1);
@@ -743,6 +746,7 @@ final class InvestmentCalculator
             'salePriceBreakdown' => $salePriceBreakdown,
             'special7b' => $special7b,
             'initialDebt' => $initialDebt,
+            'financingSurplus' => $financingSurplus,
             'monthlyRent' => $monthlyRent,
             'grossYield' => $purchasePrice > 0 ? ($annualRent / $purchasePrice) : 0.0,
             'netYield' => $purchasePrice > 0 ? ($netOperatingIncome / $purchasePrice) : 0.0,
@@ -897,8 +901,8 @@ final class InvestmentCalculator
             [
                 'group' => 'Disagio',
                 'label' => 'CF nach Steuer im Disagio-Zahlungsjahr '.$acquisition['disagioPaymentYear'],
-                'formula' => 'Miete - laufende Ausgaben - Annuität - eigene Einmalkosten inkl. eigenfinanziertem Disagio - nicht finanzierte BZZ + Steuerwirkung - Auto-Sondertilgung',
-                'values' => $disagioRow->rent.' - '.$disagioRow->expenses.' - '.$disagioRow->annuity.' - '.$disagioRow->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $disagioRow->year).' + '.$disagioRow->taxEffect.' - '.$disagioRow->autoSpecialRepayment,
+                'formula' => 'Miete - laufende Ausgaben - Annuität - eigene Einmalkosten inkl. eigenfinanziertem Disagio - nicht finanzierte BZZ + Kreditüberschuss + Steuerwirkung - Auto-Sondertilgung',
+                'values' => $disagioRow->rent.' - '.$disagioRow->expenses.' - '.$disagioRow->annuity.' - '.$disagioRow->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $disagioRow->year).' + '.$disagioRow->financingSurplus.' + '.$disagioRow->taxEffect.' - '.$disagioRow->autoSpecialRepayment,
                 'result' => $disagioRow->netCashflowAfterTax,
             ]] : []),
             [
@@ -907,6 +911,21 @@ final class InvestmentCalculator
                 'formula' => 'max(Kaufpreis + Erwerbsnebenkosten + Kreditkosten ohne Disagio + finanziertes Disagio + finanzierte BZZ - Darlehenssumme, 0)',
                 'values' => $purchasePrice.' + '.$acquisition['withoutFinancing'].' + '.$acquisition['financingWithoutDisagio'].' + '.($acquisition['disagioFinanced'] ? $acquisition['disagioAmount'] : 0).' + '.($constructionInterestTotal - $this->constructionInterestCashTotal($scenario->constructionInterest)).' - '.$initialDebt,
                 'result' => $yearlyRows[0]->oneTimeCashCosts - $yearlyRows[0]->disagioCashAmount,
+            ],
+            [
+                'group' => 'Finanzierung',
+                'label' => 'Kreditüberschuss',
+                'description' => 'Nicht für Kauf und reservierte Finanzierungskosten benötigte Darlehensmittel fließen im Kaufjahr als Liquidität zu. Kein steuerpflichtiger Ertrag oder zusätzliches Eigenkapital; die volle Schuld bleibt bestehen. Nicht für automatische Sondertilgung verfügbar.',
+                'formula' => 'max(Darlehenssumme - Kaufpreis - Erwerbsnebenkosten - Kreditkosten ohne Disagio - finanziertes Disagio - finanzierte BZZ, 0)',
+                'values' => $initialDebt.' - '.$purchasePrice.' - '.$acquisition['withoutFinancing'].' - '.$acquisition['financingWithoutDisagio'].' - '.($acquisition['disagioFinanced'] ? $acquisition['disagioAmount'] : 0).' - '.($constructionInterestTotal - $this->constructionInterestCashTotal($scenario->constructionInterest)),
+                'result' => $yearlyRows[0]->financingSurplus,
+            ],
+            [
+                'group' => 'Liquidität',
+                'label' => 'CF vor Steuer Kaufjahr',
+                'formula' => 'Miete - laufende Ausgaben - Annuität - eigene Einmalkosten - nicht finanzierte BZZ + Kreditüberschuss',
+                'values' => $yearlyRows[0]->rent.' - '.$yearlyRows[0]->expenses.' - '.$yearlyRows[0]->annuity.' - '.$yearlyRows[0]->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $scenario->property->purchaseYear).' + '.$yearlyRows[0]->financingSurplus,
+                'result' => $yearlyRows[0]->netCashflowBeforeTax,
             ],
             [
                 'group' => 'Bauzeitzinsen',
@@ -980,8 +999,8 @@ final class InvestmentCalculator
             $rows[] = [
                 'group' => 'Liquidität',
                 'label' => 'CF nach Steuer erstes volles Jahr',
-                'formula' => 'Miete - Ausgaben - Annuität - eigene Einmalkosten - nicht finanzierte BZZ + Steuerwirkung - Auto-Sondertilgung',
-                'values' => $firstOperatingRow->rent.' - '.$firstOperatingRow->expenses.' - '.$firstOperatingRow->annuity.' - '.$firstOperatingRow->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $firstOperatingRow->year).' + '.$firstOperatingRow->taxEffect.' - '.$firstOperatingRow->autoSpecialRepayment,
+                'formula' => 'Miete - Ausgaben - Annuität - eigene Einmalkosten - nicht finanzierte BZZ + Kreditüberschuss + Steuerwirkung - Auto-Sondertilgung',
+                'values' => $firstOperatingRow->rent.' - '.$firstOperatingRow->expenses.' - '.$firstOperatingRow->annuity.' - '.$firstOperatingRow->oneTimeCashCosts.' - '.$this->constructionInterestCashForYear($scenario->constructionInterest, $firstOperatingRow->year).' + '.$firstOperatingRow->financingSurplus.' + '.$firstOperatingRow->taxEffect.' - '.$firstOperatingRow->autoSpecialRepayment,
                 'result' => $firstOperatingRow->netCashflowAfterTax,
             ];
             $rows[] = [
@@ -1034,7 +1053,7 @@ final class InvestmentCalculator
             $rows[] = [
                 'group' => 'Finanzierung',
                 'label' => 'Auto-Sondertilgung',
-                'formula' => 'Jahresend-Sondertilgung aus positivem Netto-Cashflow nach Steuer, gedeckelt auf Restschuld des Zielkredits',
+                'formula' => 'Jahresend-Sondertilgung aus positivem Netto-Cashflow nach Steuer ohne Kreditüberschuss, gedeckelt auf Restschuld des Zielkredits',
                 'values' => $this->autoSpecialRepaymentModeLabel($scenario->settings->autoSpecialRepaymentMode).', Ziel: aktiver Kredit mit höchstem Sollzins',
                 'result' => $autoSpecialRepaymentTotal,
             ];
@@ -1522,6 +1541,7 @@ final class InvestmentCalculator
             'FV liquiditätsorientiert = Σ positive CF_t × (1 + r)^(T - t) + Σ negative CF_t',
             'eingesetztes Eigenkapital = Anfangs-Eigenkapital + zusätzliche Kapitalnachschüsse nach Verbrauch des Anfangstopfs',
             'Disagio = einmalige Finanzierungskosten; steuerlicher Sofortabzug im Zahlungsjahr bei aktiviertem Ansatz',
+            'Kreditüberschuss = max(Darlehen - Kaufpreis - Erwerbsnebenkosten - Kreditkosten ohne Disagio - finanziertes Disagio - finanzierte BZZ, 0); Zufluss im Kaufjahr, kein steuerpflichtiger Ertrag',
             'EK-Multiple = Netto-Endvermögen / eingesetztes Eigenkapital',
             'EK-Rendite gesamt = Netto-Vermögensgewinn nach EK / eingesetztes Eigenkapital',
             'Miete = (Monatsmiete × Monate × Mietsteigerungsfaktor + sonstige Einnahmen) × (1 - Leerstand)',

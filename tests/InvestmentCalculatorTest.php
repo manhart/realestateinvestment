@@ -398,7 +398,7 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertEqualsWithDelta(4000, $result['summary']['oneTimeFinancingCostsTotal'], 0.01);
         self::assertEqualsWithDelta(4000, $breakdown['Disagio 2026']['result'], 0.01);
         self::assertEqualsWithDelta(4000, $breakdown['Eigener Disagio-Abfluss 2026']['result'], 0.01);
-        self::assertSame('0 - 0 - 0 - 4000 - 0 + 1680 - 0', $breakdown['CF nach Steuer im Disagio-Zahlungsjahr 2026']['values']);
+        self::assertSame('0 - 0 - 0 - 4000 - 0 + 0 + 1680 - 0', $breakdown['CF nach Steuer im Disagio-Zahlungsjahr 2026']['values']);
         self::assertEqualsWithDelta(-2320, $breakdown['CF nach Steuer im Disagio-Zahlungsjahr 2026']['result'], 0.01);
         self::assertSame(2026, $result['summary']['acquisitionBreakdown']['disagioPaymentYear']);
     }

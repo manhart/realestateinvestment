@@ -165,6 +165,7 @@ class GUI_InvestmentCalculator extends GUI_Module
                 {title: 'Steuer gesamt vor', field: 'incomeTaxBefore', hozAlign: 'right', formatter: cell => this.eur(cell.getValue())},
                 {title: 'Steuer gesamt nach', field: 'incomeTaxAfter', hozAlign: 'right', formatter: cell => this.eur(cell.getValue())},
                 {title: 'Steuerwirkung', field: 'taxEffect', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
+                {title: 'Kreditüberschuss', field: 'financingSurplus', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue()), headerTooltip: 'Freie Darlehensmittel im Kaufjahr. Kein steuerpflichtiger Ertrag oder zusätzliches Eigenkapital; die zugehörige Schuld bleibt bestehen.'},
                 {title: 'eff. Steuerwirkung %', field: 'effectiveTaxRate', hozAlign: 'right', formatter: cell => this.pct(cell.getValue())},
                 {title: 'CF vor Steuer', field: 'netCashflowBeforeTax', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
                 {title: 'CF nach Steuer vor Auto-ST', field: 'netCashflowAfterTaxBeforeAutoSpecialRepayment', hozAlign: 'right', formatter: cell => this.eur(cell.getValue()), bottomCalc: values => this.sum(values), bottomCalcFormatter: cell => this.eur(cell.getValue())},
@@ -342,7 +343,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'Steuert, ob Notar/Grundbuch sofort als Werbungskosten oder über die AfA-Basis berücksichtigt werden.',
             'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz der Grundschuld-Kosten und sonstigen Kreditkosten im Kaufjahr (derzeitige Modellannahme). Finanzierungskosten für die Vermietung können grundsätzlich im Zahlungsjahr Werbungskosten sein (§ 9 EStG). Bei abweichendem Zahlungsjahr muss die zeitliche Zuordnung separat geprüft werden. Kosten und Finanzierung bleiben bei ausgeschaltetem Steueransatz erhalten. Disagio wird separat eingestellt.',
             'settings.initialEquityAmount': 'Vom Anleger zu Beginn bereitgestellter Liquiditätstopf. Unterdeckungen werden daraus gedeckt, bevor zusätzliche Kapitalnachschüsse zählen. Bereits im Cashflow erfasste Ausgaben werden nicht nochmals als Aufwand abgezogen. Unverbrauchtes Anfangskapital wird am Ende zurückgeführt.',
-            'settings.autoSpecialRepaymentMode': 'Optional können positive echte Cashflows zur Sondertilgung genutzt werden. Opportunitätszinsen sind keine verfügbare Liquidität.',
+            'settings.autoSpecialRepaymentMode': 'Optional können positive echte Cashflows zur Sondertilgung genutzt werden. Kreditüberschüsse werden dafür nicht verwendet. Opportunitätszinsen sind keine verfügbare Liquidität.',
             'settings.discountRatePercent': 'Vergleichsrendite für Barwert und Future Value. Sie ändert nicht den nominalen Netto-Vermögenseffekt.',
             'depreciation.startYear': 'Startjahr der normalen AfA. Bei Neubau wird es automatisch aus der Fertigstellung vorbelegt.',
             'depreciation.startMonth': 'Startmonat der normalen AfA. Die normale Gebäude-AfA wird monatsgenau gerechnet.',
@@ -2469,6 +2470,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             ['Gesamtaufwand', summary.totalInvestmentCost, true],
         ];
         this.totalBreakdown.innerHTML = this.renderBreakdownRows(rows);
+        this.element('[data-role="financing-surplus"]').textContent = this.eur(summary.financingSurplus);
     }
 
     renderSaleBreakdown(summary)

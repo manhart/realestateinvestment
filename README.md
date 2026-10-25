@@ -42,6 +42,13 @@ interest must not duplicate the entered ground-charge costs. The existing
 deduction switch applies to ground-charge and other credit costs in the
 purchase year; Disagio retains its own deduction setting and payment year.
 
+Entered loan amounts are never changed automatically. Funds earmarked for
+financed construction interest and Disagio are reserved before calculating
+the purchase funding gap or free loan surplus. A surplus enters cashflow
+once in the purchase year, without changing taxable income, acquisition
+costs or initial equity. It is excluded from automatic special repayment.
+The annual model does not simulate a separate loan-disbursement account.
+
 ## Tax and Depreciation Assumptions
 
 The standard linear building rate follows the completion year. Individual
