@@ -214,8 +214,8 @@
                 <div class="rei-subsection-head"><h3>Kaufnebenkosten</h3></div>
                 <div class="row g-2">
                     <label class="col-md-2">GrESt %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.realEstateTransferTaxPercent" value="3.5"></label>
-                    <label class="col-md-2">Notar %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.notaryPercent" value="1.5"></label>
-                    <label class="col-md-2">Grundbuch Kauf %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.landRegisterPurchasePercent" value="0.5"></label>
+                    <label class="col-md-3">Notar Kaufvertrag %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.notaryPercent" value="1.5"></label>
+                    <label class="col-md-3">Grundbuch Eigentümerwechsel %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.landRegisterPurchasePercent" value="0.5"></label>
                     <label class="col-md-2">Makler %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.brokerPercent" value="0"></label>
                     <label class="col-md-2">sonstige KNK<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.otherAcquisitionCosts" value="0"></label>
                     <label class="col-md-4">Notar/Grundbuch steuerlich
@@ -225,11 +225,18 @@
                         </select>
                     </label>
                 </div>
-                <div class="rei-subsection-head"><h3>Einmalige Kreditkosten</h3></div>
+                <div class="rei-subsection-head"><h3>Einmalige Finanzierungskosten</h3></div>
+                <div class="row g-2 mb-2" data-role="ground-charge-costs">
+                    <label class="col-md-6">Grundschuld-Kosten (Notar und Grundbuch)<select class="form-select" data-path="acquisitionCosts.landRegisterLienCostMode"><option value="percent">Schätzung in %</option><option value="total">Gesamtbetrag in €</option><option value="itemized">Einzelbeträge in €</option></select></label>
+                    <div class="col-md-6 rei-ground-charge-total"><span>Berücksichtigte Grundschuld-Kosten</span><output data-role="ground-charge-total" aria-live="polite">–</output></div>
+                    <label class="col-md-3">Schätzung %<input class="form-control" type="number" min="0" step="0.01" data-path="acquisitionCosts.landRegisterLienPercent" data-ground-charge-mode="percent" value="0.5"><small data-role="ground-charge-inactive" hidden>Nicht berücksichtigt</small></label>
+                    <label class="col-md-3">Gesamtbetrag €<input class="form-control" type="number" min="0" step="0.01" data-path="acquisitionCosts.landRegisterLienTotalAmount" data-ground-charge-mode="total" value="0" disabled><small data-role="ground-charge-inactive">Nicht berücksichtigt</small></label>
+                    <label class="col-md-3">Notar Grundschuldbestellung (€ brutto)<input class="form-control" type="number" min="0" step="0.01" data-path="acquisitionCosts.landRegisterLienNotaryAmount" data-ground-charge-mode="itemized" value="0" disabled><small data-role="ground-charge-inactive">Nicht berücksichtigt</small></label>
+                    <label class="col-md-3">Grundbuch Grundschuldeintragung (€)<input class="form-control" type="number" min="0" step="0.01" data-path="acquisitionCosts.landRegisterLienRegistrationAmount" data-ground-charge-mode="itemized" value="0" disabled><small data-role="ground-charge-inactive">Nicht berücksichtigt</small></label>
+                </div>
                 <div class="row g-2 mb-2">
-                    <label class="col-md-2">Pfandrecht %<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.landRegisterLienPercent" value="0.5"></label>
                     <label class="col-md-4">Sonstige Kreditkosten<input class="form-control" type="number" step="0.01" data-path="acquisitionCosts.otherFinancingCosts" value="0"></label>
-                    <div class="col-md-6 rei-check form-check form-switch"><input id="rei-financing-costs-deductible" class="form-check-input" type="checkbox" data-path="acquisitionCosts.financingCostsDeductible" checked><label class="form-check-label" for="rei-financing-costs-deductible">Pfandrecht / sonstige Kreditkosten steuerlich ansetzen <a class="rei-source-link" href="https://www.gesetze-im-internet.de/estg/__9.html" target="_blank" rel="noopener" title="§ 9 EStG">↗</a></label></div>
+                    <div class="col-md-8 rei-check form-check form-switch"><input id="rei-financing-costs-deductible" class="form-check-input" type="checkbox" data-path="acquisitionCosts.financingCostsDeductible" checked><label class="form-check-label" for="rei-financing-costs-deductible">Sofort als Werbungskosten ansetzen</label></div>
                 </div>
                 <div class="row g-2">
                     <label class="col-md-3">Disagio / Zinsvorauszahlung (€)<input class="form-control" type="number" min="0" step="0.01" data-path="acquisitionCosts.disagioAmount" value="0"></label>

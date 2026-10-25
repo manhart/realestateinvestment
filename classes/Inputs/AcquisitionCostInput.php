@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace realestateinvestment\classes\Inputs;
 
+use InvalidArgumentException;
 use realestateinvestment\classes\Support\InputReader;
 
 final class AcquisitionCostInput
@@ -24,10 +25,27 @@ final class AcquisitionCostInput
         public ?int $disagioPaymentYear = null,
         public bool $disagioFinanced = false,
         public bool $disagioDeductible = true,
+        public string $landRegisterLienCostMode = 'percent',
+        public float $landRegisterLienTotalAmount = 0,
+        public float $landRegisterLienNotaryAmount = 0,
+        public float $landRegisterLienRegistrationAmount = 0,
     ) {}
 
     public static function fromArray(array $data, string $state = 'BY'): self
     {
+        $lienMode = InputReader::string($data, 'landRegisterLienCostMode', 'percent');
+        $lienTotal = InputReader::float($data, 'landRegisterLienTotalAmount');
+        $lienNotary = InputReader::float($data, 'landRegisterLienNotaryAmount');
+        $lienRegistration = InputReader::float($data, 'landRegisterLienRegistrationAmount');
+        $activeAmounts = match($lienMode) {
+            'percent' => [InputReader::float($data, 'landRegisterLienPercent', 0.5)],
+            'total' => [$lienTotal],
+            'itemized' => [$lienNotary, $lienRegistration],
+            default => throw new InvalidArgumentException('Grundschuld-Kosten: unbekannte Eingabeart.'),
+        };
+        foreach($activeAmounts as $amount) {
+            if($amount < 0) throw new InvalidArgumentException('Grundschuld-Kosten dürfen nicht negativ sein.');
+        }
         $defaultTransferTax = $state === 'BY' ? 3.5 : 5.0;
         $notaryLandRegisterTaxTreatment = InputReader::string($data, 'notaryLandRegisterTaxTreatment', self::NOTARY_LAND_REGISTER_AFA_BASIS);
         if(!in_array($notaryLandRegisterTaxTreatment, [self::NOTARY_LAND_REGISTER_AFA_BASIS, self::NOTARY_LAND_REGISTER_IMMEDIATE_DEDUCTIBLE], true)) {
@@ -48,6 +66,10 @@ final class AcquisitionCostInput
             isset($data['disagioPaymentYear']) ? InputReader::int($data, 'disagioPaymentYear') : null,
             InputReader::bool($data, 'disagioFinanced'),
             InputReader::bool($data, 'disagioDeductible', true),
+            $lienMode,
+            $lienTotal,
+            $lienNotary,
+            $lienRegistration,
         );
     }
 

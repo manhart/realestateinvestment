@@ -25,6 +25,27 @@ function calculator() {
     return gui;
 }
 
+test('ground charge mode disables alternatives without clearing their values', () => {
+    const gui = new Calculator();
+    const inputs = ['percent', 'total', 'itemized', 'itemized'].map((mode, index) => {
+        const note = {hidden: false};
+        return {dataset: {groundChargeMode: mode}, value: String(index + 10), note,
+            closest: () => ({querySelector: () => note})};
+    });
+    gui.getRootElement = () => ({querySelectorAll: () => inputs});
+    gui.setFieldContainerDisabled = (input, disabled) => input.dimmed = disabled;
+    for(const mode of ['percent', 'total', 'itemized', 'percent']) {
+        gui.value = () => mode;
+        gui.updateGroundChargeMode();
+        inputs.forEach((input, index) => {
+            assert.equal(input.disabled, input.dataset.groundChargeMode !== mode);
+            assert.equal(input.dimmed, input.disabled);
+            assert.equal(input.note.hidden, !input.disabled);
+            assert.equal(input.value, String(index + 10));
+        });
+    }
+});
+
 test('metadata changes do not duplicate numerical requests', async () => {
     const gui = calculator();
     let requests = 0;

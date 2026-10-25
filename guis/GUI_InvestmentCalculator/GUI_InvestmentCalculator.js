@@ -325,18 +325,22 @@ class GUI_InvestmentCalculator extends GUI_Module
             'expenses.otherMonthlyCosts': 'Weitere laufende Kosten, die monatlich in Cashflow und Werbungskostenlogik einfließen.',
             'expenses.annualIncreasePercent': 'Annahme, wie stark laufende Kosten im Zeitverlauf steigen.',
             'acquisitionCosts.realEstateTransferTaxPercent': 'Grunderwerbsteuer auf den steuerpflichtigen Immobilienkaufpreis. Möbel/Küche sind separat zu prüfen.',
-            'acquisitionCosts.notaryPercent': 'Notarkosten in Prozent vom Kaufpreis. Je nach steuerlicher Auswahl sofortige Werbungskosten oder AfA-relevante Nebenkosten.',
-            'acquisitionCosts.landRegisterPurchasePercent': 'Grundbuchkosten für den Kauf. Die steuerliche Behandlung folgt der Auswahl Notar/Grundbuch steuerlich.',
-            'acquisitionCosts.landRegisterLienPercent': 'Kosten für Eintragung des Grundpfandrechts, berechnet auf die Darlehenssumme.',
+            'acquisitionCosts.notaryPercent': 'Kosten für den Kaufvertrag, geschätzt als Prozentsatz des Immobilienkaufpreises. Nicht mit Notarkosten der Grundschuldbestellung vermischen. Erwerbsbezogene Kosten gehören grundsätzlich zu den Anschaffungskosten; bestehende abweichende Steuerannahmen werden separat gekennzeichnet.',
+            'acquisitionCosts.landRegisterPurchasePercent': 'Kosten für den Eigentümerwechsel im Grundbuch. Die Eintragung einer Grundschuld zur Finanzierung wird separat unter Grundschuld-Kosten erfasst.',
+            'acquisitionCosts.landRegisterLienCostMode': 'Die Grundschuld ist die im Grundbuch eingetragene Kreditsicherheit der Bank. Hier werden nur die Kosten ihrer Bestellung und Eintragung erfasst, keine zusätzliche Schuld. Genau eine Eingabeart bestimmt den berücksichtigten Betrag; deaktivierte Werte bleiben gespeichert.',
+            'acquisitionCosts.landRegisterLienPercent': 'Pauschale Schätzung der Notar- und Grundbuchkosten für die Grundschuld als Prozentsatz der Darlehenssumme. Kein gesetzlicher Gebührensatz und kein GNotKG-Gebührenrechner. Nur im Prozentmodus berücksichtigt.',
+            'acquisitionCosts.landRegisterLienTotalAmount': 'Bekannter Gesamtbetrag für Notar und Grundbuch zur Grundschuld. Nicht zusätzlich unter sonstigen Kreditkosten oder beim Immobilienkauf erfassen. Nur im Gesamtbetragsmodus berücksichtigt.',
+            'acquisitionCosts.landRegisterLienNotaryAmount': 'Bruttobetrag einschließlich Umsatzsteuer und Auslagen für die Grundschuldbestellung. Nur die hierfür angefallenen Positionen der Notarrechnung erfassen, nicht die Beurkundung des Kaufvertrags. Nur im Einzelbetragsmodus berücksichtigt.',
+            'acquisitionCosts.landRegisterLienRegistrationAmount': 'Gebühren des Grundbuchamts für die Eintragung der Grundschuld. Nicht mit den Gebühren für den Eigentümerwechsel verwechseln. Nur im Einzelbetragsmodus berücksichtigt.',
             'acquisitionCosts.brokerPercent': 'Maklerkosten in Prozent vom Kaufpreis. Im Modell werden sie als Erwerbsnebenkosten berücksichtigt.',
             'acquisitionCosts.otherAcquisitionCosts': 'Weitere einmalige Erwerbsnebenkosten, die nicht in den Prozentfeldern enthalten sind.',
-            'acquisitionCosts.otherFinancingCosts': 'Weitere einmalige Kreditkosten, z. B. Bankgebühren. Pfandrecht und Disagio werden separat erfasst und dürfen hier nicht nochmals enthalten sein.',
+            'acquisitionCosts.otherFinancingCosts': 'Weitere einmalige Kreditkosten, z. B. Bankgebühren. Grundschuld-Kosten und Disagio werden separat erfasst und dürfen hier nicht nochmals enthalten sein.',
             'acquisitionCosts.disagioAmount': 'Einmalige Zinsvorauszahlung an die Bank. Der Rechner setzt den Betrag bei aktiviertem steuerlichem Ansatz vollständig im Zahlungsjahr als Werbungskosten an. Eine Verteilung auf mehrere Jahre wird nicht berechnet. Der Sofortabzug ist eine Rechenannahme und setzt insbesondere ein marktübliches Disagio sowie den tatsächlichen Zahlungsabfluss voraus (§ 11 Abs. 2 EStG). Nicht nochmals unter sonstigen Kreditkosten oder Bauzeitzinsen erfassen.',
             'acquisitionCosts.disagioPaymentYear': 'Jahr, in dem das Disagio tatsächlich bezahlt oder von der Darlehensauszahlung einbehalten wurde. Automatisch wird das Kaufjahr vorgeschlagen. Eine manuelle Jahresangabe bleibt erhalten.',
             'acquisitionCosts.disagioFinanced': 'Bei Darlehensfinanzierung muss das Disagio bereits in der eingegebenen Darlehenssumme enthalten sein. Es gibt keinen zusätzlichen direkten Eigenmittelabfluss. Darlehen und Anfangs-Eigenkapital werden nicht automatisch geändert.',
             'acquisitionCosts.disagioDeductible': 'Aktiv: vollständiger Ansatz als Werbungskosten im Zahlungsjahr unter der Annahme eines zulässigen Sofortabzugs. Die Finanzierung des Disagios ist davon unabhängig.',
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'Steuert, ob Notar/Grundbuch sofort als Werbungskosten oder über die AfA-Basis berücksichtigt werden.',
-            'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz von Pfandrecht und sonstigen Kreditkosten im Kaufjahr. Der steuerliche Ansatz des Disagios wird separat eingestellt.',
+            'acquisitionCosts.financingCostsDeductible': 'Aktiviert den steuerlichen Ansatz der Grundschuld-Kosten und sonstigen Kreditkosten im Kaufjahr (derzeitige Modellannahme). Finanzierungskosten für die Vermietung können grundsätzlich im Zahlungsjahr Werbungskosten sein (§ 9 EStG). Bei abweichendem Zahlungsjahr muss die zeitliche Zuordnung separat geprüft werden. Kosten und Finanzierung bleiben bei ausgeschaltetem Steueransatz erhalten. Disagio wird separat eingestellt.',
             'settings.initialEquityAmount': 'Vom Anleger zu Beginn bereitgestellter Liquiditätstopf. Unterdeckungen werden daraus gedeckt, bevor zusätzliche Kapitalnachschüsse zählen. Bereits im Cashflow erfasste Ausgaben werden nicht nochmals als Aufwand abgezogen. Unverbrauchtes Anfangskapital wird am Ende zurückgeführt.',
             'settings.autoSpecialRepaymentMode': 'Optional können positive echte Cashflows zur Sondertilgung genutzt werden. Opportunitätszinsen sind keine verfügbare Liquidität.',
             'settings.discountRatePercent': 'Vergleichsrendite für Barwert und Future Value. Sie ändert nicht den nominalen Netto-Vermögenseffekt.',
@@ -407,7 +411,7 @@ class GUI_InvestmentCalculator extends GUI_Module
     createSwitchNotes()
     {
         return {
-            'acquisitionCosts.financingCostsDeductible': 'Steuert nur die steuerliche Behandlung von Pfandrecht/Kreditkosten.',
+            'acquisitionCosts.financingCostsDeductible': 'Grundschuld-/sonstige Kreditkosten: Steueransatz im Kaufjahr; Disagio separat.',
             'depreciation.buildingBasisOverrideEnabled': 'Nur nutzen, wenn eine externe AfA-Basis vorliegt.',
             'depreciation.special7bActive': 'Förderfähigkeit und Nachweis separat prüfen.',
             'sale.taxFreeSale': '10-Jahres-Frist nach notariellem Kaufvertrag prüfen.',
@@ -1048,8 +1052,8 @@ class GUI_InvestmentCalculator extends GUI_Module
                 ? 'Notar/Grundbuch werden im Kaufjahr als Werbungskosten angesetzt'
                 : 'Notar/Grundbuch erhöhen anteilig die AfA-Basis',
             'acquisitionCosts.financingCostsDeductible': values.financingCostsDeductible
-                ? 'Pfandrecht/Kreditkosten werden steuerlich als Werbungskosten berücksichtigt'
-                : 'Pfandrecht/Kreditkosten werden nicht als Werbungskosten angesetzt',
+                ? 'Grundschuld-/sonstige Kreditkosten werden im Kaufjahr als Werbungskosten angesetzt'
+                : 'Grundschuld-/sonstige Kreditkosten werden nicht als Werbungskosten angesetzt',
             'settings.initialEquityAmount': values.financingGapText,
             'settings.autoSpecialRepaymentMode': values.autoRepaymentText,
             'settings.discountRatePercent': `wirkt auf NPV/FV mit ${this.percentInput(values.discountRate)}; nominale Kennzahlen bleiben unverändert`,
@@ -1682,6 +1686,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             if(sequence !== this.calculateSequence || revision !== this.calculationRevision) return;
             this.lastCalculationFingerprint = null;
             this.lastResultSummary = {};
+            this.element('[data-role="ground-charge-total"]').textContent = '–';
             [this.summary, this.purchaseBreakdown, this.acquisitionBreakdown, this.financingBreakdown, this.totalBreakdown, this.saleBreakdown, this.depreciationBasisBreakdown, this.calculationBreakdown].forEach(element => element.innerHTML = '');
             this.yearTable.clearData();
             this.rowCount.textContent = 'Keine gültige Berechnung';
@@ -2074,6 +2079,7 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     updateDependentFieldStates()
     {
+        this.updateGroundChargeMode();
         this.element('[data-role="disagio-details"]').hidden = Number(this.value('acquisitionCosts.disagioAmount') || 0) <= 0;
         const disagioYear = this.getRootElement().querySelector('[data-path="acquisitionCosts.disagioPaymentYear"]');
         disagioYear.min = String(this.value('property.purchaseYear') || '');
@@ -2093,6 +2099,17 @@ class GUI_InvestmentCalculator extends GUI_Module
 
         const churchTaxActive = Boolean(this.value('tax.churchTax'));
         this.setPathDisabled('tax.churchTaxState', !churchTaxActive);
+    }
+
+    updateGroundChargeMode()
+    {
+        const mode = this.value('acquisitionCosts.landRegisterLienCostMode');
+        this.getRootElement().querySelectorAll('[data-ground-charge-mode]').forEach(input => {
+            const inactive = input.dataset.groundChargeMode !== mode;
+            input.disabled = inactive;
+            this.setFieldContainerDisabled(input, inactive);
+            input.closest('label').querySelector('[data-role="ground-charge-inactive"]').hidden = !inactive;
+        });
     }
 
     setPathDisabled(path, disabled, keepReadonly = false)
@@ -2146,6 +2163,10 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.notaryPercent': 1.5,
             'acquisitionCosts.landRegisterPurchasePercent': 0.5,
             'acquisitionCosts.landRegisterLienPercent': 0.5,
+            'acquisitionCosts.landRegisterLienCostMode': 'percent',
+            'acquisitionCosts.landRegisterLienTotalAmount': 0,
+            'acquisitionCosts.landRegisterLienNotaryAmount': 0,
+            'acquisitionCosts.landRegisterLienRegistrationAmount': 0,
             'acquisitionCosts.financingCostsDeductible': true,
             'acquisitionCosts.notaryLandRegisterTaxTreatment': 'afa_basis',
             'acquisitionCosts.disagioAmount': 0,
@@ -2378,6 +2399,7 @@ class GUI_InvestmentCalculator extends GUI_Module
     renderSidebarCostBreakdown(summary)
     {
         const acquisition = summary.acquisitionBreakdown || {};
+        this.element('[data-role="ground-charge-total"]').textContent = this.eur(acquisition.landRegisterLien);
         const allocation = summary.costAllocation || {};
         this.renderPurchaseBreakdown(allocation, summary);
         this.renderAcquisitionBreakdown(acquisition);
@@ -2406,8 +2428,8 @@ class GUI_InvestmentCalculator extends GUI_Module
         const rows = [
             ['Bemessungsgrundlage Immobilienkauf', values.realEstatePurchasePrice, true],
             ['Grunderwerbsteuer', values.realEstateTransferTax],
-            ['Notar', values.notary],
-            ['Grundbuch Kauf', values.landRegisterPurchase],
+            ['Notar Kaufvertrag', values.notary],
+            ['Grundbuch Eigentümerwechsel', values.landRegisterPurchase],
             ['Makler', values.broker],
             ['sonstige Erwerbsnebenkosten', values.otherAcquisitionCosts],
             ['Zwischensumme Erwerbsnebenkosten', values.acquisitionCostsWithoutFinancing, true],
@@ -2419,11 +2441,17 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     renderFinancingBreakdown(values, summary)
     {
+        const mode = values.landRegisterLienCostMode || 'percent';
+        const labels = {percent: 'Schätzung', total: 'Gesamtbetrag', itemized: 'Einzelbeträge'};
         const rows = [
-            ['Pfandrecht', values.landRegisterLien],
+            ...(mode === 'itemized' ? [
+                ['Notar Grundschuldbestellung', values.landRegisterLienNotaryAmount],
+                ['Grundbuch Grundschuldeintragung', values.landRegisterLienRegistrationAmount],
+            ] : []),
+            [`Grundschuld-Kosten (${labels[mode]})`, values.landRegisterLien, true],
             [`Disagio (${values.disagioPaymentYear})`, values.disagioAmount],
             ['Sonstige Kreditkosten', values.otherFinancingCosts],
-            ['Zwischensumme Kreditkosten', summary.financingCosts, true],
+            ['Zwischensumme Finanzierungskosten ohne Bauzeitzinsen', summary.financingCosts, true],
             ['Bauzeitzinsen brutto', summary.constructionInterestTotal],
             ['davon nicht finanziert', summary.constructionInterestCashTotal],
             ['davon finanziert', summary.constructionInterestFinancedTotal],

@@ -240,7 +240,11 @@ final class InvestmentCalculator
         $notary = $realEstatePurchasePrice * $input->notaryRate;
         $landRegisterPurchase = $realEstatePurchasePrice * $input->landRegisterPurchaseRate;
         $broker = $realEstatePurchasePrice * $input->brokerRate;
-        $landRegisterLien = $initialDebt * $input->landRegisterLienRate;
+        $landRegisterLien = match($input->landRegisterLienCostMode) {
+            'percent' => $initialDebt * $input->landRegisterLienRate,
+            'total' => $input->landRegisterLienTotalAmount,
+            'itemized' => $input->landRegisterLienNotaryAmount + $input->landRegisterLienRegistrationAmount,
+        };
         $withoutFinancing = $realEstateTransferTax + $notary + $landRegisterPurchase + $broker + $input->otherAcquisitionCosts;
         $financingWithoutDisagio = $landRegisterLien + $input->otherFinancingCosts;
         $financing = $financingWithoutDisagio + $input->disagioAmount;
@@ -257,6 +261,9 @@ final class InvestmentCalculator
             'broker' => $broker,
             'otherAcquisitionCosts' => $input->otherAcquisitionCosts,
             'landRegisterLien' => $landRegisterLien,
+            'landRegisterLienCostMode' => $input->landRegisterLienCostMode,
+            'landRegisterLienNotaryAmount' => $input->landRegisterLienCostMode === 'itemized' ? $input->landRegisterLienNotaryAmount : null,
+            'landRegisterLienRegistrationAmount' => $input->landRegisterLienCostMode === 'itemized' ? $input->landRegisterLienRegistrationAmount : null,
             'otherFinancingCosts' => $input->otherFinancingCosts,
             'disagioAmount' => $input->disagioAmount,
             'disagioPaymentYear' => $input->disagioYear($scenario->property->purchaseYear),
@@ -695,6 +702,9 @@ final class InvestmentCalculator
             'broker' => $acquisition['broker'],
             'otherAcquisitionCosts' => $acquisition['otherAcquisitionCosts'],
             'landRegisterLien' => $acquisition['landRegisterLien'],
+            'landRegisterLienCostMode' => $acquisition['landRegisterLienCostMode'],
+            'landRegisterLienNotaryAmount' => $acquisition['landRegisterLienNotaryAmount'],
+            'landRegisterLienRegistrationAmount' => $acquisition['landRegisterLienRegistrationAmount'],
             'otherFinancingCosts' => $acquisition['otherFinancingCosts'],
             'disagioAmount' => $acquisition['disagioAmount'],
             'disagioPaymentYear' => $acquisition['disagioPaymentYear'],
@@ -839,9 +849,25 @@ final class InvestmentCalculator
             ],
             [
                 'group' => 'Finanzierungskosten',
+                'label' => 'Grundschuld-Kosten',
+                'formula' => match($scenario->acquisitionCosts->landRegisterLienCostMode) {
+                    'percent' => 'Darlehenssumme × Schätzung in %',
+                    'total' => 'Gesamtbetrag laut Eingabe',
+                    'itemized' => 'Notar Grundschuldbestellung + Grundbuch Grundschuldeintragung',
+                },
+                'values' => match($scenario->acquisitionCosts->landRegisterLienCostMode) {
+                    'percent' => $initialDebt.' × '.($scenario->acquisitionCosts->landRegisterLienRate * 100).' %',
+                    'total' => (string)$acquisition['landRegisterLien'],
+                    'itemized' => $acquisition['landRegisterLienNotaryAmount'].' + '.$acquisition['landRegisterLienRegistrationAmount'],
+                },
+                'result' => $acquisition['landRegisterLien'],
+                'source' => OfficialSourceRegistry::get('estg_9_werbungskosten'),
+            ],
+            [
+                'group' => 'Finanzierungskosten',
                 'label' => 'Finanzierungskosten',
-                'formula' => 'Darlehenssumme × Pfandrecht % + Disagio + sonstige Kreditkosten',
-                'values' => $initialDebt.' × '.($scenario->acquisitionCosts->landRegisterLienRate * 100).' % + '.$acquisition['disagioAmount'].' + '.$acquisition['otherFinancingCosts'],
+                'formula' => 'Grundschuld-Kosten + Disagio + sonstige Kreditkosten',
+                'values' => $acquisition['landRegisterLien'].' + '.$acquisition['disagioAmount'].' + '.$acquisition['otherFinancingCosts'],
                 'result' => $acquisition['financing'],
                 'source' => OfficialSourceRegistry::get('estg_9_werbungskosten'),
             ],

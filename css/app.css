@@ -788,6 +788,26 @@ body {
     margin: 0;
 }
 
+.rei-ground-charge-total {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.rei-ground-charge-total output {
+    font-weight: 600;
+}
+
+[data-role="ground-charge-inactive"] {
+    display: block;
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+[data-role="ground-charge-inactive"][hidden] {
+    display: none;
+}
+
 .rei-tax-review {
     margin-bottom: 16px;
     padding: 8px 0;

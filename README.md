@@ -27,6 +27,21 @@ Keep your private workspace link safe. Anyone with that link can view and
 edit its saved scenarios. The bookmark action explains how to save the link
 in your browser; it does not create a bookmark automatically.
 
+## One-Time Financing Costs
+
+Ground-charge notary and registration costs can be entered as a percentage
+estimate of total loan principal, one total amount, or separate notary and
+land-register amounts. Only the selected mode contributes to costs. Other
+fields are disabled but their values remain available after switching modes
+or saving and loading a scenario. An explicit zero never activates another
+mode. Scenarios without a mode continue to use the percentage estimate.
+
+Purchase-contract notary fees and ownership-transfer registration fees stay
+separate from financing costs. Other credit costs, Disagio and construction
+interest must not duplicate the entered ground-charge costs. The existing
+deduction switch applies to ground-charge and other credit costs in the
+purchase year; Disagio retains its own deduction setting and payment year.
+
 ## Tax and Depreciation Assumptions
 
 The standard linear building rate follows the completion year. Individual
