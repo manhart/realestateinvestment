@@ -47,8 +47,9 @@ class GUI_InvestmentCalculator extends GUI_Module
             'acquisitionCosts.disagioPaymentYear',
             'depreciation.startYear',
             'depreciation.startMonth',
+            'depreciation.linearRatePercent',
+            'depreciation.usefulLifeYears',
             'depreciation.buildingBasis',
-            'depreciation.special7bApplicationDate',
             'depreciation.special7bArea',
             'depreciation.special7bConstructionCostLimitPerSqm',
             'depreciation.special7bLimitPerSqm',
@@ -90,6 +91,7 @@ class GUI_InvestmentCalculator extends GUI_Module
 
         this.initTables();
         this.bindControls();
+        this.initTaxEligibilityInputs();
         this.prepareStaticInputs();
         this.enhanceFieldGuidance();
         this.initInfoPopovers();
@@ -110,6 +112,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateTaxModeState();
         this.updateDependentFieldStates();
         this.updateBuildingBasisOverrideState();
+        this.updateLinearRateMode();
         this.syncSpecial7bCalculatedCosts();
         this.syncParkingValueIncreaseDefault(false);
         this.syncDisagioYear(false);
@@ -181,6 +184,7 @@ class GUI_InvestmentCalculator extends GUI_Module
             placeholder: 'Kein Vergleich',
             columns: [
                 {title: 'Szenario', field: 'scenarioName', minWidth: 180},
+                {title: 'Steuerprognose', field: 'taxStatus', minWidth: 190},
                 {title: 'Nettoeffekt', field: 'netWorthEffect', hozAlign: 'right', formatter: cell => this.eur(cell.getValue())},
                 {title: 'Hebel', field: 'leverageEfficiency', hozAlign: 'right', formatter: cell => this.pct(cell.getValue())},
                 {title: 'NPV', field: 'npv', hozAlign: 'right', formatter: cell => this.eur(cell.getValue())},
@@ -219,6 +223,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.getRootElement().addEventListener('input', event => this.handleScenarioInput(event, false));
         this.getRootElement().addEventListener('change', event => this.handleScenarioInput(event, true));
         this.form.addEventListener('submit', event => event.preventDefault());
+        this.element('[data-role="depreciation-year"]').addEventListener('change', () => this.filterDepreciationBreakdown());
     }
 
     handleScenarioInput(event, committed)
@@ -235,6 +240,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.updateParkingDepreciationControlsFromEvent(input);
         this.updateTaxModeState();
         this.updateDependentFieldStates();
+        this.updateLinearRateMode();
         this.updateGuidanceState();
         const scenario = this.collectScenario();
         this.saveDraft(scenario);
@@ -247,6 +253,43 @@ class GUI_InvestmentCalculator extends GUI_Module
             return;
         }
         this.getRootElement().querySelectorAll('[data-bs-toggle="popover"]').forEach(element => this.initPopover(element));
+    }
+
+    initTaxEligibilityInputs()
+    {
+        const labels = {
+            newDwelling: '§7b: neue, begünstigte Wohnung',
+            timelyAcquisition: '§7b: wirtschaftlicher Erwerb rechtzeitig',
+            rentalUse: '§7b: entgeltliche Wohnraumvermietung',
+            qng: '§7b: EH40-NH / QNG (neue Regel)',
+            degressive: 'Degressive AfA: neuer Wohnungsbau / rechtzeitiger Erwerb',
+            costAllocation: '§7b: begünstigte Kosten und Förderfläche zugeordnet',
+        };
+        this.element('[data-role="tax-eligibility-inputs"]').innerHTML = Object.entries(labels).map(([key, label]) =>
+            `<label class="col-md-6">${this.escape(label)}<select class="form-select" data-path="depreciation.taxEligibility.${key}"><option value="unknown">Noch ungeklärt</option><option value="fulfilled">Erfüllt nach eigener Prüfung</option><option value="failed">Nicht erfüllt</option></select></label>`).join('');
+    }
+
+    updateLinearRateMode()
+    {
+        const manual = Boolean(this.value('depreciation.linearRateOverrideEnabled'));
+        ['depreciation.linearRatePercent', 'depreciation.usefulLifeYears'].forEach(path => {
+            const input = this.getRootElement().querySelector(`[data-path="${path}"]`);
+            if(input) input.readOnly = !manual;
+        });
+    }
+
+    renderTaxReview(review)
+    {
+        this.element('[data-role="tax-review-label"]').textContent = review.label || 'Steuerliche Modellannahmen';
+        const states = {fulfilled: 'Nach Angaben erfüllt', unknown: 'Offen / Annahme', failed: 'Nicht erfüllt'};
+        this.element('[data-role="tax-review-content"]').innerHTML =
+            `<p>${this.escape((review.notes || []).join(' '))}</p>` +
+            (review.checks || []).map(check => `<div class="rei-breakdown-row"><span>${this.escape(check.label)}</span><strong>${this.escape(states[check.status] || check.status)}</strong></div>`).join('') +
+            `<p>${(review.sources || []).map(source => this.renderSourceLink(source)).join(' ')}</p>`;
+        if(!this.value('depreciation.linearRateOverrideEnabled') && review.linearRatePercent !== undefined) {
+            this.getRootElement().querySelector('[data-path="depreciation.linearRatePercent"]').value = String(review.linearRatePercent);
+            this.getRootElement().querySelector('[data-path="depreciation.usefulLifeYears"]').value = String(review.usefulLifeYears);
+        }
     }
 
     initPopover(element)
@@ -302,14 +345,24 @@ class GUI_InvestmentCalculator extends GUI_Module
             'depreciation.buildingBasis': 'Automatisch berechnete Gebäude-AfA-Basis aus Gebäudeanteil und AfA-relevanten Nebenkosten.',
             'depreciation.buildingBasisOverrideEnabled': 'Nur aktivieren, wenn ein Anbieter oder Steuerberater eine abweichende AfA-Basis vorgibt.',
             'depreciation.degressiveRatePercent': 'Satz der degressiven Gebäude-AfA. Bei Neubau aktuell häufig 5 %, sofern Voraussetzungen erfüllt sind.',
-            'depreciation.linearRatePercent': 'Linearer AfA-Satz für die Vergleichs- oder Anschlussrechnung.',
+            'depreciation.linearRatePercent': 'Gesetzlicher linearer Ausgangssatz: 3 % für Fertigstellung ab 2023, 2 % für 1925–2022, davor 2,5 %. Beim Wechsel von degressiv zu linear wird stattdessen der Restwert über die verbleibende Nutzungsdauer verteilt. Kein zusätzlicher Abzug neben der degressiven AfA.',
+            'depreciation.usefulLifeYears': 'Rechnerische Gesamtnutzungsdauer für Restwert-AfA und Methodenwechsel: gesetzlicher Standard 33, 50 oder 40 Jahre. Individuelle Werte sind eine eigene Expertenannahme, keine automatisch bestätigte steuerliche Zulässigkeit.',
+            'depreciation.linearRateOverrideEnabled': 'Erlaubt abweichenden linearen Satz und Nutzungsdauer als ausdrücklich individuelle Modellannahme. Importierte PDF-Vergleichssätze werden nicht automatisch als gesetzliche Vorgabe behandelt.',
+            'depreciation.special7bRulePeriod': 'Nur bei unbekanntem Bauantragsdatum selbst wählen. Ein vorhandenes Datum hat Vorrang. Der Kaufvertrag ersetzt den Bauantrag nicht.',
+            'depreciation.special7bEligibleCostsOverride': 'Nur für eine abweichende Ermittlung begünstigter Anschaffungs-/Herstellungskosten einschließlich zutreffend zugeordneter Nebenräume oder Garagen. Betrag vor der Förderkappung, ohne Grund und Boden. 0 verwendet automatisch die Gebäude-Basis des Objekts. Der Stellplatz-AfA-Typ allein bestätigt keine §7b-Begünstigung.',
+            'depreciation.taxEligibility.newDwelling': 'Eigene Einschätzung, ob eine neue, nach §7b begünstigte Wohnung vorliegt. Ein Angebot oder eine Prognose ersetzt die Prüfung nicht. Es werden keine Dokumente hochgeladen.',
+            'depreciation.taxEligibility.timelyAcquisition': 'Maßgeblich ist der wirtschaftliche Erwerb, insbesondere der Übergang von Nutzen und Lasten, nicht allein die frühere notarielle Unterschrift. Die neue Wohnung muss bis Ende des Fertigstellungsjahres erworben werden.',
+            'depreciation.taxEligibility.rentalUse': 'Entgeltliche Überlassung zu Wohnzwecken; Eigennutzung und vorübergehende Beherbergung sind nicht begünstigt. Leerstand bei fortbestehender Vermietungsabsicht ist davon zu unterscheiden.',
+            'depreciation.taxEligibility.qng': 'Für die neuere §7b-Regel: EH40 mit Nachhaltigkeits-Klasse und QNG. Ein KfW-Darlehen oder die Energieklasse allein bestätigt diese Voraussetzung nicht.',
+            'depreciation.taxEligibility.degressive': 'Eigene Prüfung, dass neuer Wohnungsbau und die Voraussetzungen für die degressive Gebäude-AfA einschließlich rechtzeitigen wirtschaftlichen Erwerbs vorliegen.',
+            'depreciation.taxEligibility.costAllocation': 'Kosten vor der Kappung und die tatsächlich begünstigte Fläche einschließlich zutreffend zugeordneter Nebenräume selbst prüfen. Nicht mit dem separat ermittelten Baukosten-Prüfwert gleichsetzen.',
             'depreciation.degressiveActive': 'Aktiviert die degressive AfA statt nur linearer AfA.',
             'depreciation.autoSwitchToLinear': 'Wechselt automatisch zur linearen AfA, sobald diese günstiger ist.',
             'depreciation.special7bActive': 'Aktiviert die Sonder-AfA nach §7b. Förderfähigkeit und Nachweise müssen im Einzelfall geprüft werden.',
-            'depreciation.special7bApplicationDate': 'Datum für die Auswahl der §7b-Regel. Vorbelegt aus dem Kaufdatum, falls kein Bauantragsdatum bekannt ist.',
+            'depreciation.special7bApplicationDate': 'Tatsächliches Datum des Bauantrags oder der Bauanzeige. Wird nicht aus dem Kaufvertrag hergeleitet. Wenn unbekannt, den Förderzeitraum ausdrücklich selbst wählen.',
             'depreciation.special7bArea': 'Fläche, mit der die §7b-Förderhöchstgrenze je m² multipliziert wird.',
             'depreciation.special7bConstructionCostLimitPerSqm': 'Baukostenobergrenze je m². Sie entscheidet, ob die Wohnung dem Grunde nach förderfähig sein kann.',
-            'depreciation.special7bActualConstructionCostPerSqm': 'Optionaler Prüfwert der tatsächlichen Baukosten je m². Wenn unbekannt, bei 0 lassen.',
+            'depreciation.special7bActualConstructionCostPerSqm': 'Selbst ermittelter oder vom Anbieter erklärter Prüfwert für die Baukostenobergrenze. Das BMF berücksichtigt die maßgebliche Nutzfläche einschließlich bestimmter Nebenräume. Gebäude-Basis geteilt durch reine Wohnfläche ist nicht automatisch dieser Prüfwert. 0 bedeutet unbekannt, nicht 0 € tatsächliche Kosten.',
             'depreciation.special7bLimitPerSqm': 'Maximale §7b-Bemessungsgrundlage je m². Dieser Wert kappt die Sonder-AfA-Basis.',
             'depreciation.special7bBasis': 'Berechnete §7b-Bemessungsgrundlage nach Kappung. Sie ist readonly, damit Formel und Eingaben konsistent bleiben.',
             'depreciation.special7bRatePercent': 'Jährlicher Sonder-AfA-Satz für die §7b-Bemessungsgrundlage.',
@@ -935,6 +988,9 @@ class GUI_InvestmentCalculator extends GUI_Module
                 override.checked = false;
             }
             this.updateBuildingBasisOverrideState();
+        } else if(['depreciation.linearRatePercent', 'depreciation.usefulLifeYears'].includes(path)) {
+            this.getRootElement().querySelector('[data-path="depreciation.linearRateOverrideEnabled"]').checked = false;
+            this.updateLinearRateMode();
         } else if(path === 'depreciation.special7bApplicationDate') {
             this.syncSpecial7bApplicationDate(true);
             this.syncSpecial7bRuleDefaults(false);
@@ -955,6 +1011,8 @@ class GUI_InvestmentCalculator extends GUI_Module
     updateInlineFieldMeta()
     {
         const values = this.currentInputOverview();
+        const special = this.lastResultSummary?.special7b;
+        const furnitureBasis = Number(this.lastResultSummary?.furnitureDepreciationBasis ?? values.furnitureBasis);
         const metas = {
             'property.livingArea': values.livingArea > 0 && values.apartment > 0
                 ? `Kaufpreis Wohnung je m²: ${this.eur(values.apartment / values.livingArea)}`
@@ -1007,11 +1065,13 @@ class GUI_InvestmentCalculator extends GUI_Module
                 ? `Prüfwert: ${this.eur(values.special7bActualCostsPerSqm)} / m²`
                 : 'optional; leer/0, wenn kein Anbieter-Prüfwert vorliegt',
             'depreciation.special7bLimitPerSqm': `${this.dec(values.special7bArea, 2)} m² × ${this.eur(values.special7bLimitPerSqm)} = ${this.eur(values.special7bCap)}`,
-            'depreciation.special7bBasis': `min(${this.eur(values.buildingDepreciationBasis)}, ${this.eur(values.special7bCap)}) = ${this.eur(values.special7bAssessmentBasis)}`,
+            'depreciation.special7bBasis': special?.assessmentBasis > 0
+                ? `min(${this.eur(special.eligibleCosts)}, ${this.eur(special.cap)}) = ${this.eur(special.assessmentBasis)}`
+                : 'kein Ansatz; Auswahl, Zeitraum und Voraussetzungen prüfen',
             'depreciation.special7bRatePercent': `Sonder-AfA p.a.: ${this.eur(values.special7bAssessmentBasis * values.special7bRate / 100)}`,
             'depreciation.special7bYears': `Sonder-AfA gesamt: ${this.eur(values.special7bAssessmentBasis * values.special7bRate / 100 * values.special7bYears)}`,
-            'depreciation.furnitureBasis': `Möbel/Küche-AfA p.a.: ${this.eur(values.furnitureBasis * values.furnitureRate / 100)}`,
-            'depreciation.furnitureRatePercent': `Möbel/Küche-AfA p.a.: ${this.eur(values.furnitureBasis * values.furnitureRate / 100)}`,
+            'depreciation.furnitureBasis': `effektive Basis: ${this.eur(furnitureBasis)} · AfA p.a.: ${this.eur(furnitureBasis * values.furnitureRate / 100)}`,
+            'depreciation.furnitureRatePercent': `Möbel/Küche-AfA p.a.: ${this.eur(furnitureBasis * values.furnitureRate / 100)}`,
             'tax.calculationMethod': values.taxMethod === 'section_32a' ? 'rechnet mit Tarif, Soli und optional Kirchensteuer' : 'nutzt steuerlichen Gewinn/Verlust × Grenzsteuersatz',
             'tax.taxableIncomeBeforeInvestment': `Startwert zvE: ${this.eur(values.taxableIncome)}`,
             'tax.taxableIncomeAnnualIncreasePercent': `zvE-Steigerung: ${this.percentInput(values.taxableIncomeIncrease)} p.a.`,
@@ -1172,6 +1232,9 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     isAutoFieldCurrentlyAutomatic(path)
     {
+        if(['depreciation.linearRatePercent', 'depreciation.usefulLifeYears'].includes(path)) {
+            return !this.value('depreciation.linearRateOverrideEnabled');
+        }
         if(path === 'depreciation.buildingBasis') {
             return !this.buildingBasisOverrideEnabled();
         }
@@ -1210,8 +1273,8 @@ class GUI_InvestmentCalculator extends GUI_Module
             return this.calculatedSpecial7bAssessmentBasis();
         }
         if(['depreciation.special7bConstructionCostLimitPerSqm', 'depreciation.special7bLimitPerSqm', 'depreciation.special7bRatePercent', 'depreciation.special7bYears'].includes(path)) {
-            const date = String(this.value('depreciation.special7bApplicationDate') || '2023-01-01');
-            const rule = this.special7bRules.find(item => date >= item.from && date < item.until) || this.special7bRules[1];
+            const rule = this.selectedSpecial7bRule();
+            if(!rule) return null;
             return {
                 'depreciation.special7bConstructionCostLimitPerSqm': rule.constructionCostLimitPerSqm,
                 'depreciation.special7bLimitPerSqm': rule.specialAfaLimitPerSqm,
@@ -1332,9 +1395,9 @@ class GUI_InvestmentCalculator extends GUI_Module
         if(['property.purchaseYear', 'property.purchaseMonth'].includes(input.dataset.path)) {
             this.syncSpecial7bApplicationDate(false);
         }
-        if(input.dataset.path === 'depreciation.special7bApplicationDate') {
+        if(['depreciation.special7bApplicationDate', 'depreciation.special7bRulePeriod'].includes(input.dataset.path)) {
             input.dataset.autoValue = 'false';
-            this.syncSpecial7bRuleDefaults(forceRule);
+            this.syncSpecial7bRuleDefaults(true);
         }
         if(this.special7bCostTriggerPaths.includes(input.dataset.path)) {
             this.syncSpecial7bCalculatedCosts();
@@ -1364,8 +1427,8 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     syncSpecial7bRuleDefaults(force)
     {
-        const date = String(this.value('depreciation.special7bApplicationDate') || '2023-01-01');
-        const rule = this.special7bRules.find(item => date >= item.from && date < item.until) || this.special7bRules[1];
+        const rule = this.selectedSpecial7bRule();
+        if(!rule) return;
         this.setRuleDefault('depreciation.special7bConstructionCostLimitPerSqm', rule.constructionCostLimitPerSqm, force);
         this.setRuleDefault('depreciation.special7bLimitPerSqm', rule.specialAfaLimitPerSqm, force);
         this.setRuleDefault('depreciation.special7bRatePercent', rule.ratePercent, force);
@@ -1375,40 +1438,25 @@ class GUI_InvestmentCalculator extends GUI_Module
     syncSpecial7bApplicationDate(force)
     {
         const input = this.getRootElement().querySelector('[data-path="depreciation.special7bApplicationDate"]');
-        const year = Number(this.value('property.purchaseYear') || 0);
-        const month = Number(this.value('property.purchaseMonth') || 1);
-        if(!input || year <= 0) {
-            return;
-        }
-        if(force || input.value === '' || input.dataset.autoValue === 'true') {
-            input.value = `${year}-${String(Math.min(Math.max(month, 1), 12)).padStart(2, '0')}-01`;
-            input.dataset.autoValue = 'true';
-        }
+        if(force && input) input.value = '';
+    }
+
+    selectedSpecial7bRule()
+    {
+        const date = String(this.value('depreciation.special7bApplicationDate') || '');
+        if(date) return this.special7bRules.find(item => date >= item.from && date < item.until) || null;
+        const period = this.value('depreciation.special7bRulePeriod');
+        return period === 'old' ? this.special7bRules[0] : (period === 'new' ? this.special7bRules[1] : null);
     }
 
     syncSpecial7bCalculatedCosts()
     {
-        const basisInput = this.getRootElement().querySelector('[data-path="depreciation.special7bBasis"]');
-        const costsPerSqmInput = this.getRootElement().querySelector('[data-role="special7b-costs-per-sqm"]');
-        if(!basisInput) {
-            return;
-        }
-
-        const basis = this.calculatedSpecial7bAssessmentBasis();
-        const area = Number(this.value('depreciation.special7bArea') || this.value('property.livingArea') || 0);
-        basisInput.value = this.numberValue(basis);
-        if(costsPerSqmInput) {
-            costsPerSqmInput.value = area > 0 ? this.numberValue(basis / area) : '0';
-        }
+        this.renderSpecial7bInputs(this.lastResultSummary?.special7b || {});
     }
 
     calculatedSpecial7bAssessmentBasis()
     {
-        const area = Number(this.value('depreciation.special7bArea') || this.value('property.livingArea') || 0);
-        const limitPerSqm = Number(this.value('depreciation.special7bLimitPerSqm') || 0);
-        const cap = area > 0 && limitPerSqm > 0 ? area * limitPerSqm : 0;
-        const buildingBasis = this.calculatedBuildingDepreciationBasis();
-        return cap > 0 ? Math.min(buildingBasis, cap) : buildingBasis;
+        return Number(this.lastResultSummary?.special7b?.assessmentBasis || 0);
     }
 
     calculatedBuildingDepreciationBasis()
@@ -1946,6 +1994,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         }
         this.syncSpecial7bDefaults(false);
         this.updateBuildingBasisOverrideState();
+        this.updateLinearRateMode();
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
         this.updateDependentFieldStates();
@@ -2003,6 +2052,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.syncDisagioYear(true);
         this.syncSpecial7bDefaults(false);
         this.updateBuildingBasisOverrideState();
+        this.updateLinearRateMode();
         this.normalizeIntegerInputs();
         this.updateTaxModeState();
         this.updateDependentFieldStates();
@@ -2108,6 +2158,9 @@ class GUI_InvestmentCalculator extends GUI_Module
             'depreciation.buildingBasisOverrideEnabled': false,
             'depreciation.degressiveRatePercent': 5,
             'depreciation.linearRatePercent': 3,
+            'depreciation.linearRateOverrideEnabled': false,
+            'depreciation.usefulLifeYears': 33,
+            'depreciation.special7bRulePeriod': '',
             'depreciation.degressiveActive': true,
             'depreciation.autoSwitchToLinear': true,
             'depreciation.special7bConstructionCostLimitPerSqm': 5200,
@@ -2250,8 +2303,9 @@ class GUI_InvestmentCalculator extends GUI_Module
     render(result)
     {
         this.lastResultSummary = result.summary || {};
+        this.renderTaxReview(result.taxReview || {});
         this.renderWarnings(result.warnings || []);
-        this.renderSummary(result.summary || {}, result.scales || {});
+        this.renderSummary(result.summary || {}, result.scales || {}, result.taxReview || {});
         this.renderSidebarCostBreakdown(result.summary || {});
         this.renderSpecial7bInputs(result.summary?.special7b || {});
         this.updateGuidanceState();
@@ -2272,7 +2326,7 @@ class GUI_InvestmentCalculator extends GUI_Module
         this.warnings.innerHTML = warnings.map(item => `<div class="alert alert-${this.escape(item.level || 'info')}">${this.escape(item.message)}</div>`).join('');
     }
 
-    renderSummary(summary, scales)
+    renderSummary(summary, scales, review = {})
     {
         const cards = [
             {label: 'Kaufpreis', value: this.eur(summary.purchasePrice), calcKey: 'calc-gesamtkaufpreis'},
@@ -2308,7 +2362,7 @@ class GUI_InvestmentCalculator extends GUI_Module
                 {label: 'EK-Rendite p.a.', value: this.pct(summary.equityAnnualizedReturn), calcKey: 'calc-annualisierte-ek-rendite'},
             );
         }
-        this.summary.innerHTML = cards.map(card => `
+        this.summary.innerHTML = (review.status === 'incomplete' ? '<p class="rei-summary-note">Vorläufige Endergebnisse: mögliche Verkaufssteuer / §7b-Rückforderung und offene Kostenannahmen nicht vollständig berechnet.</p>' : '') + cards.map(card => `
             <article class="rei-card">
                 <span>${this.escape(card.label)}</span>
                 ${card.calcKey ? `<button class="rei-card-link" type="button" data-calc-target="${this.escape(card.calcKey)}" title="Rechenweg anzeigen" aria-label="Rechenweg ${this.escape(card.label)} anzeigen"><i class="bi bi-bookmark" aria-hidden="true"></i></button>` : ''}
@@ -2446,15 +2500,20 @@ class GUI_InvestmentCalculator extends GUI_Module
         if(basisInput && special.assessmentBasis !== undefined) {
             basisInput.value = this.numberValue(special.assessmentBasis);
         }
-        if(costsPerSqmInput && special.assessmentBasisPerSqm !== undefined) {
-            costsPerSqmInput.value = this.numberValue(special.assessmentBasisPerSqm);
+        if(costsPerSqmInput && special.costsPerSqm !== undefined) {
+            costsPerSqmInput.value = this.numberValue(special.costsPerSqm);
         }
     }
 
     renderCalculationBreakdown(rows)
     {
+        const select = this.element('[data-role="depreciation-year"]');
+        const previous = select.value;
+        const years = [...new Set(rows.filter(row => row.year !== undefined && row.group === 'AfA').map(row => String(row.year)))];
+        select.innerHTML = years.map(year => `<option value="${this.escape(year)}">${this.escape(year)}</option>`).join('');
+        if(years.includes(previous)) select.value = previous;
         this.calculationBreakdown.innerHTML = rows.map(row => `
-            <article class="rei-calc-row" id="${this.escape(row.key || '')}">
+            <article class="rei-calc-row" id="${this.escape(row.key || '')}" ${row.year !== undefined && row.group === 'AfA' ? `data-depreciation-year="${row.year}"` : ''}>
                 <div>
                     <span>${this.escape(row.group || '')}</span>
                     <strong>${this.escape(row.label || '')}${this.renderSourceLink(row.source)}</strong>
@@ -2465,6 +2524,13 @@ class GUI_InvestmentCalculator extends GUI_Module
                 <b>${this.formatBreakdownResult(row)}</b>
             </article>
         `).join('');
+        this.filterDepreciationBreakdown();
+    }
+
+    filterDepreciationBreakdown()
+    {
+        const year = this.element('[data-role="depreciation-year"]').value;
+        this.calculationBreakdown.querySelectorAll('[data-depreciation-year]').forEach(row => row.hidden = row.dataset.depreciationYear !== year);
     }
 
     scrollToCalculationBreakdown(key)
@@ -2480,6 +2546,7 @@ class GUI_InvestmentCalculator extends GUI_Module
 
     formatBreakdownResult(row)
     {
+        if(row.format === 'years') return `${this.dec(row.result, 2)} Jahre`;
         if(row.format === 'percent') {
             return this.pct(row.result);
         }

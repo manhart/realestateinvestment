@@ -17,6 +17,7 @@ final class InvestmentCalculationResult
         public array $yearlyResults,
         public array $formulas,
         public array $calculationBreakdown = [],
+        public array $taxReview = [],
     ) {}
 
     public function toArray(): array
@@ -30,6 +31,7 @@ final class InvestmentCalculationResult
             'yearlyRows' => array_map(static fn(YearlyCalculationResult $row): array => $row->toArray(), $this->yearlyResults),
             'formulas' => $this->formulas,
             'calculationBreakdown' => $this->calculationBreakdown,
+            'taxReview' => $this->taxReview,
         ];
     }
 }

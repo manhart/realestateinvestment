@@ -32,10 +32,28 @@ final class DepreciationInput
         public float $parkingBasis,
         public float $parkingRate,
         public array $parkingDepreciationItems = [],
+        public bool $linearRateOverrideEnabled = false,
+        public float $usefulLifeYears = 33,
+        public float $enteredLinearRate = 0.03,
+        public array $taxEligibility = [],
+        public string $special7bRulePeriod = '',
+        public ?int $special7bLastYear = null,
+        public float $special7bEligibleCostsOverride = 0,
     ) {}
 
     public static function fromArray(array $data, PropertyInput $property): self
     {
+        [$standardRate, $standardLife] = match(true) {
+            $property->completionYear >= 2023 => [3, 33],
+            $property->completionYear >= 1925 => [2, 50],
+            default => [2.5, 40],
+        };
+        $override = InputReader::bool($data, 'linearRateOverrideEnabled');
+        $eligibility = [];
+        foreach(['newDwelling', 'qng', 'rentalUse', 'timelyAcquisition', 'degressive', 'costAllocation'] as $key) {
+            $value = $data['taxEligibility'][$key] ?? 'unknown';
+            $eligibility[$key] = in_array($value, ['fulfilled', 'failed'], true) ? $value : 'unknown';
+        }
         return new self(
             InputReader::int($data, 'startYear', $property->completionYear),
             InputReader::month($data, 'startMonth', $property->completionMonth),
@@ -43,7 +61,7 @@ final class DepreciationInput
             InputReader::bool($data, 'buildingBasisOverrideEnabled'),
             InputReader::bool($data, 'degressiveActive', true),
             InputReader::rate($data, 'degressiveRatePercent', 5),
-            InputReader::rate($data, 'linearRatePercent', 3),
+            $override ? InputReader::rate($data, 'linearRatePercent', $standardRate) : $standardRate / 100,
             InputReader::bool($data, 'autoSwitchToLinear', true),
             InputReader::bool($data, 'special7bActive'),
             InputReader::string($data, 'special7bApplicationDate'),
@@ -60,6 +78,14 @@ final class DepreciationInput
             InputReader::rate($data, 'furnitureRatePercent', 10),
             InputReader::float($data, 'parkingBasis'),
             InputReader::rate($data, 'parkingRatePercent', 3),
+            [],
+            $override,
+            $override ? InputReader::float($data, 'usefulLifeYears', $standardLife) : $standardLife,
+            InputReader::rate($data, 'linearRatePercent', $standardRate),
+            $eligibility,
+            InputReader::string($data, 'special7bRulePeriod'),
+            null,
+            InputReader::float($data, 'special7bEligibleCostsOverride'),
         );
     }
 }

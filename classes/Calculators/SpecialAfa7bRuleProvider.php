@@ -5,8 +5,6 @@ namespace realestateinvestment\classes\Calculators;
 
 final class SpecialAfa7bRuleProvider
 {
-    private const DEFAULT_APPLICATION_DATE = '2023-01-01';
-
     private const RULES = [
         [
             'validFromApplicationDate' => '2018-09-01',
@@ -26,26 +24,28 @@ final class SpecialAfa7bRuleProvider
         ],
     ];
 
-    public function ruleForDate(string $applicationDate): array
+    public function ruleForDate(string $applicationDate, string $period = ''): array
     {
         $date = $this->normalizeDate($applicationDate);
-        $defaulted = $date === '';
-        $date = $defaulted ? self::DEFAULT_APPLICATION_DATE : $date;
-
-        foreach(self::RULES as $rule) {
-            if($date >= $rule['validFromApplicationDate'] && $date < $rule['validUntilApplicationDate']) {
+        foreach(self::RULES as $index => $rule) {
+            if(($date !== '' && $date >= $rule['validFromApplicationDate'] && $date < $rule['validUntilApplicationDate'])
+                || ($applicationDate === '' && $period === ($index === 0 ? 'old' : 'new'))) {
                 return $rule + [
                     'applicationDate' => $date,
-                    'defaulted' => $defaulted,
+                    'defaulted' => false,
                     'matched' => true,
+                    'period' => $index === 0 ? 'old' : 'new',
+                    'lastAllowanceYear' => $index === 0 ? 2026 : null,
                 ];
             }
         }
 
         return [
             'applicationDate' => $date,
-            'defaulted' => $defaulted,
+            'defaulted' => false,
             'matched' => false,
+            'period' => '',
+            'lastAllowanceYear' => null,
             'constructionCostLimitPerSqm' => 0.0,
             'specialAfaLimitPerSqm' => 0.0,
             'specialAfaRate' => 0.05,
@@ -55,6 +55,7 @@ final class SpecialAfa7bRuleProvider
 
     private function normalizeDate(string $date): string
     {
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : '';
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        return $parsed && $parsed->format('Y-m-d') === $date ? $date : '';
     }
 }

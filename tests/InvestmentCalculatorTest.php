@@ -504,6 +504,7 @@ final class InvestmentCalculatorTest extends TestCase
         $scenario['loans'][0]['repaymentRateAfterInterestOnlyPercent'] = 0;
         $scenario['depreciation']['degressiveActive'] = false;
         $scenario['depreciation']['linearRatePercent'] = 0;
+        $scenario['depreciation']['linearRateOverrideEnabled'] = true;
         $scenario['sale']['annualValueIncreasePercent'] = 0;
         $scenario['sale']['sellingCostsPercent'] = 0;
         $scenario['settings']['discountRatePercent'] = 0;
@@ -901,7 +902,8 @@ final class InvestmentCalculatorTest extends TestCase
         self::assertEqualsWithDelta(13233.52, $result['yearlyRows'][2]['depreciationTotal'], 0.01);
         $breakdown = array_column($result['calculationBreakdown'], null, 'label');
         self::assertEqualsWithDelta(5035.52, $breakdown['AfA degressiv 2028']['result'], 0.01);
-        self::assertEqualsWithDelta(3021.31, $breakdown['AfA linear 2028']['result'], 0.01);
+        self::assertEqualsWithDelta(0, $breakdown['AfA linear 2028']['result'], 0.01);
+        self::assertGreaterThan(0, $breakdown['Linearer Wechselvergleich 2028']['result']);
         self::assertEqualsWithDelta(7868, $breakdown['AfA §7b 2028']['result'], 0.01);
         self::assertEqualsWithDelta(330, $breakdown['AfA Möbel/Küche 2028']['result'], 0.01);
         self::assertEqualsWithDelta(0, $breakdown['AfA Stellplatz 2028']['result'], 0.01);

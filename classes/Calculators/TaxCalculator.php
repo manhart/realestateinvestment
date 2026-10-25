@@ -13,6 +13,9 @@ final class TaxCalculator
         $taxableAfter = max($taxableBefore + $rentalTaxableIncome, 0);
 
         if($tax->calculationMethod === TaxInput::CALCULATION_METHOD_SECTION_32A) {
+            if(!in_array($tax->taxYear, [2025, 2026], true)) {
+                throw new \InvalidArgumentException('§32a: Unterstützte Tarifjahre sind 2025 und 2026.');
+            }
             $before = $this->section32aTaxBreakdown($tax, $taxableBefore);
             $after = $this->section32aTaxBreakdown($tax, $taxableAfter);
 

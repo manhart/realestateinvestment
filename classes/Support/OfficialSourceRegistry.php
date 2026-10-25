@@ -16,6 +16,11 @@ final class OfficialSourceRegistry
     private static function all(): array
     {
         return [
+            'estg_7' => ['label' => '§ 7 EStG', 'url' => 'https://www.gesetze-im-internet.de/estg/__7.html'],
+            'estg_7a' => ['label' => '§ 7a EStG', 'url' => 'https://www.gesetze-im-internet.de/estg/__7a.html'],
+            'estg_7b' => ['label' => '§ 7b EStG', 'url' => 'https://www.gesetze-im-internet.de/estg/__7b.html'],
+            'estg_23' => ['label' => '§ 23 EStG', 'url' => 'https://www.gesetze-im-internet.de/estg/__23.html'],
+            'bmf_7b' => ['label' => 'BMF 21.05.2025, Rn. 48–66', 'url' => 'https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Einkommensteuer/2025-05-21-anwendungsschreiben-7b-estg-neu.html'],
             'estg_11_disagio' => [
                 'label' => '§ 11 Abs. 2 EStG',
                 'url' => 'https://www.gesetze-im-internet.de/estg/__11.html',

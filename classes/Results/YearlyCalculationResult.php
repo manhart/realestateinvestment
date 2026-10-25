@@ -47,6 +47,7 @@ final class YearlyCalculationResult
         public float $opportunityInterest = 0.0,
         public float $autoSpecialRepayment = 0.0,
         public string $autoSpecialRepaymentTarget = '',
+        public array $depreciationDetails = [],
         public float $constructionInterest = 0.0,
         public float $disagioAmount = 0.0,
         public float $disagioCashAmount = 0.0,

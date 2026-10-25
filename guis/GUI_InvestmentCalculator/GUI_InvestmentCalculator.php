@@ -88,6 +88,7 @@ final class GUI_InvestmentCalculator extends GUI_Module
             $summary = $result['summary'];
             $rows[] = [
                 'scenarioName' => $scenario['scenarioName'] ?? 'Szenario',
+                'taxStatus' => $result['taxReview']['label'],
                 'netWorthEffect' => $summary['netWorthEffect'],
                 'leverageEfficiency' => $summary['leverageEfficiency'],
                 'npv' => $summary['npv'],

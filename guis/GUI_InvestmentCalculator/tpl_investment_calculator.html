@@ -132,6 +132,7 @@
     </section>
 
     <div class="rei-alerts" data-role="warnings"></div>
+    <details class="rei-details rei-tax-review" data-role="tax-review-panel"><summary data-role="tax-review-label">Steuerliche Modellannahmen</summary><div data-role="tax-review-content"></div></details>
 
     <section class="rei-layout">
         <form class="rei-form" data-role="scenario-form" autocomplete="off">
@@ -298,17 +299,20 @@
                     </div>
                     <div class="col-md-2 rei-check form-check form-switch"><input id="rei-building-basis-override" class="form-check-input" type="checkbox" data-path="depreciation.buildingBasisOverrideEnabled" data-role="building-basis-override"><label class="form-check-label" for="rei-building-basis-override">Gebäude-Basis überschreiben</label></div>
                     <label class="col-md-2">degressiv %<input class="form-control" type="number" step="0.01" data-path="depreciation.degressiveRatePercent" value="5"></label>
-                    <label class="col-md-2">linear %<input class="form-control" type="number" step="0.01" data-path="depreciation.linearRatePercent" value="3"></label>
+                    <label class="col-md-2">linear %<input class="form-control" type="number" step="0.01" data-path="depreciation.linearRatePercent" value="3" readonly></label>
+                    <label class="col-md-2">Nutzungsdauer Jahre<input class="form-control" type="number" min="0.01" step="0.01" data-path="depreciation.usefulLifeYears" value="33" readonly></label>
+                    <div class="col-md-3 rei-check form-check form-switch"><input id="rei-linear-override" class="form-check-input" type="checkbox" data-path="depreciation.linearRateOverrideEnabled"><label class="form-check-label" for="rei-linear-override">Individuelle AfA</label></div>
                     <div class="col-md-2 rei-check form-check form-switch"><input id="rei-degressive-active" class="form-check-input" type="checkbox" data-path="depreciation.degressiveActive" checked><label class="form-check-label" for="rei-degressive-active">degressive AfA anwenden</label></div>
                     <div class="col-md-2 rei-check form-check form-switch"><input id="rei-auto-switch-linear" class="form-check-input" type="checkbox" data-path="depreciation.autoSwitchToLinear" checked><label class="form-check-label" for="rei-auto-switch-linear">Wechsel zur linearen AfA</label></div>
                     <div class="col-md-2 rei-check form-check form-switch"><input id="rei-special7b-active" class="form-check-input" type="checkbox" data-path="depreciation.special7bActive"><label class="form-check-label" for="rei-special7b-active">Sonder-AfA §7b anwenden <a class="rei-source-link" href="https://esth.bundesfinanzministerium.de/esth/2024/A-Einkommensteuergesetz/II-Einkommen-2-24b/3-Gewinn-4-7i/Paragraf-7b/inhalt.html" target="_blank" rel="noopener" title="EStH § 7b">↗</a></label></div>
                     <input type="hidden" data-path="depreciation.special7bReducesBookValueImmediately" value="false">
                     <label class="col-md-2">§7b Bauantrag<input class="form-control" type="date" data-path="depreciation.special7bApplicationDate" value=""></label>
+                    <label class="col-md-3">§7b Zeitraum bei unbekanntem Datum<select class="form-select" data-path="depreciation.special7bRulePeriod"><option value="">Bitte selbst festlegen</option><option value="old">Bauantrag 09/2018–12/2021</option><option value="new">Bauantrag 01/2023–09/2029</option></select></label>
                     <label class="col-md-2">§7b Fläche m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bArea" value="0"></label>
                     <label class="col-md-2">§7b Baukostenlimit €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bConstructionCostLimitPerSqm" value="5200"></label>
-                    <label class="col-md-2">§7b Baukosten Ist €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bActualConstructionCostPerSqm" value="0"></label>
+                    <label class="col-md-2">§7b Prüfwert laut Ermittlung €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bActualConstructionCostPerSqm" value="0"></label>
                     <label class="col-md-2">§7b Förderlimit €/m²<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bLimitPerSqm" value="4000"></label>
-                    <label class="col-md-2">§7b begünstigte AH-Kosten<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bBasis" value="0" readonly></label>
+                    <label class="col-md-2">§7b-Basis nach Kappung<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bBasis" value="0" readonly></label>
                     <label class="col-md-2">§7b AH-Kosten je m²<input class="form-control" type="number" step="0.01" data-role="special7b-costs-per-sqm" value="0" readonly></label>
                     <label class="col-md-2">§7b %<input class="form-control" type="number" step="0.01" data-path="depreciation.special7bRatePercent" value="5"></label>
                     <label class="col-md-2">§7b Jahre<input class="form-control" type="number" step="1" data-integer data-path="depreciation.special7bYears" value="4"></label>
@@ -343,6 +347,11 @@
                         </div>
                     </div>
                 </div>
+                <details class="rei-details mt-3">
+                    <summary>Steuerliche Voraussetzungen – eigene Angaben</summary>
+                    <div class="row g-2 mt-1" data-role="tax-eligibility-inputs"></div>
+                    <label class="d-block mt-2">§7b begünstigte Kosten abweichend (€; 0 = Gebäude-Basis)<input class="form-control" type="number" min="0" step="0.01" data-path="depreciation.special7bEligibleCostsOverride" value="0"></label>
+                </details>
                 </div>
             </div>
         </form>
@@ -391,6 +400,7 @@
             <h2>Rechenwege</h2>
             <span>mit eingesetzten Zahlen</span>
         </div>
+        <label class="mb-2">AfA-Rechenwege für Jahr<select class="form-select form-select-sm" data-role="depreciation-year"></select></label>
         <div class="rei-calculation-breakdown" data-role="calculation-breakdown"></div>
     </section>
 </div>

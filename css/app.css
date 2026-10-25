@@ -778,6 +778,21 @@ body {
     gap: 10px;
 }
 
+.rei-calc-row[hidden] {
+    display: none;
+}
+
+.rei-summary-note {
+    grid-column: 1 / -1;
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+.rei-tax-review {
+    margin-bottom: 16px;
+    padding: 8px 0;
+}
+
 .rei-calc-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

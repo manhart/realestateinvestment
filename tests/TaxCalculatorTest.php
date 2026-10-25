@@ -9,6 +9,13 @@ use realestateinvestment\classes\Inputs\TaxInput;
 
 final class TaxCalculatorTest extends TestCase
 {
+    public function testUnsupportedTariffYearIsNotSilentlyReplaced(): void
+    {
+        $tax = TaxInput::fromArray(['calculationMethod' => 'section_32a', 'taxYear' => 2024]);
+        $this->expectException(\InvalidArgumentException::class);
+        (new TaxCalculator())->calculate($tax, -1000);
+    }
+
     public function testMarginalRateModeKeepsExistingSimplifiedTaxEffect(): void
     {
         $tax = new TaxInput(100000, TaxInput::CALCULATION_METHOD_MARGINAL_RATE, 'single', false, 'BY', false, true, 0.35, false, 2026);

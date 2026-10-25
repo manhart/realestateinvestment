@@ -24,6 +24,7 @@ final class InvestmentCalculator
         private readonly MetricScaleEvaluator $scaleEvaluator = new MetricScaleEvaluator(),
         private readonly ScenarioValidator $validator = new ScenarioValidator(),
         private readonly SpecialAfa7bCalculator $specialAfa7bCalculator = new SpecialAfa7bCalculator(),
+        private readonly TaxAssumptionEvaluator $taxAssumptionEvaluator = new TaxAssumptionEvaluator(),
     ) {}
 
     public function calculate(RealEstateInvestmentScenario $scenario): InvestmentCalculationResult
@@ -65,18 +66,29 @@ final class InvestmentCalculator
         $scenario->depreciation->special7bArea = $scenario->depreciation->special7bArea > 0
             ? $scenario->depreciation->special7bArea
             : $scenario->property->livingArea;
-        $scenario->depreciation->special7bBasis = $scenario->depreciation->special7bBasis > 0
-            ? $scenario->depreciation->special7bBasis
-            : $objectBuildingBasis;
+        // Stored read-only assessment values are not acquisition/manufacturing costs.
+        $scenario->depreciation->special7bBasis = $scenario->depreciation->special7bEligibleCostsOverride > 0
+            ? $scenario->depreciation->special7bEligibleCostsOverride : $objectBuildingBasis;
 
+        if($scenario->property->purchaseYear > $scenario->property->completionYear || !$scenario->property->newBuilding) {
+            $scenario->depreciation->taxEligibility['timelyAcquisition'] = 'failed';
+        }
         $special7b = $this->specialAfa7bCalculator->calculate($scenario->depreciation, $scenario->property->livingArea);
         $scenario->depreciation->special7bBasis = $special7b['assessmentBasis'];
         $scenario->depreciation->special7bCap = $special7b['cap'];
+        $degressiveChecks = $this->taxAssumptionEvaluator->degressiveChecks($scenario);
+        $taxReview = $this->taxAssumptionEvaluator->evaluate($scenario, $special7b, $degressiveChecks);
+        if(in_array('failed', array_column($degressiveChecks, 'status'), true)) $scenario->depreciation->degressiveActive = false;
+        if($special7b['assessmentBasis'] <= 0 || $scenario->depreciation->special7bRate <= 0 || $scenario->depreciation->special7bYears === 0
+            || ($scenario->depreciation->special7bLastYear !== null && $scenario->depreciation->startYear > $scenario->depreciation->special7bLastYear)) {
+            $scenario->depreciation->special7bActive = false;
+        }
 
         $warnings = array_merge(
             $this->validator->validate($scenario, $totalCosts, $initialDebt),
             $special7b['warnings'],
             $this->depreciationWarnings($manualBuildingBasis, $objectBuildingBasis, $autoObjectBuildingBasis, $parkingIncludedInBuildingBasis),
+            $taxReview['warnings'],
         );
         $loanStates = $this->loanCalculator->initialStates($scenario->loans);
         $depreciationYears = $this->depreciationCalculator->calculate($scenario->depreciation, $startYear, $endYear, $scenario->property->saleMonth);
@@ -103,6 +115,7 @@ final class InvestmentCalculator
             $row->depreciationFurniture = $depreciation['furniture'];
             $row->depreciationParking = $depreciation['parking'];
             $row->depreciationTotal = $depreciation['total'];
+            $row->depreciationDetails = $depreciation;
 
             $row->constructionInterest = $this->constructionInterestForYear($scenario->constructionInterest, $year);
             $row->disagioAmount = $year === $disagioYear ? $costInput->disagioAmount : 0.0;
@@ -184,7 +197,6 @@ final class InvestmentCalculator
             'debtYield' => $firstOperatingRow ? $this->scaleEvaluator->evaluateDebtYield($firstOperatingRow->debtYield) : ['label' => 'n/a', 'variant' => 'secondary'],
             'dscr' => $firstOperatingRow ? $this->scaleEvaluator->evaluateDscr($firstOperatingRow->dscr) : ['label' => 'n/a', 'variant' => 'secondary'],
         ];
-
         return new InvestmentCalculationResult(
             $this->summary($scenario, $purchasePrice, $acquisition, $costAllocation, $totalCosts, $initialDebt, $firstOperatingRow, $metrics, $special7b, $objectBuildingBasis, $parkingIncludedInBuildingBasis),
             $metrics,
@@ -194,6 +206,7 @@ final class InvestmentCalculator
             $rows,
             $this->formulas(),
             $this->calculationBreakdown($scenario, $purchasePrice, $acquisition, $costAllocation, $totalCosts, $initialDebt, $firstOperatingRow, $firstTaxEffectRow, $rows, $metrics, $special7b),
+            $taxReview,
         );
     }
 
@@ -927,14 +940,14 @@ final class InvestmentCalculator
             [
                 'group' => 'AfA',
                 'label' => '§7b-Bemessungsgrundlage',
-                'formula' => 'min(begünstigte AH-Kosten, §7b-Fläche × Förderhöchstgrenze je m²)',
+                'formula' => 'bei zulässigem Ansatz: min(begünstigte AH-Kosten, §7b-Fläche × Förderhöchstgrenze je m²), sonst 0',
                 'values' => 'min('.$special7b['eligibleCosts'].', '.$special7b['area'].' × '.$special7b['limitPerSqm'].')',
                 'result' => $special7b['assessmentBasis'],
                 'source' => OfficialSourceRegistry::get('esth_7b'),
             ],
         ];
 
-        array_push($rows, ...$this->depreciationBreakdownRows($scenario, $special7b));
+        array_push($rows, ...$this->depreciationBreakdownRows($yearlyRows));
 
         if($firstOperatingRow) {
             $rows[] = $this->rentBreakdownRow($scenario, $firstOperatingRow);
@@ -1406,100 +1419,35 @@ final class InvestmentCalculator
         return $tax->taxableIncomeBeforeInvestment * ((1 + $tax->taxableIncomeAnnualIncrease) ** $yearIndex);
     }
 
-    private function depreciationBreakdownRows(RealEstateInvestmentScenario $scenario, array $special7b): array
+    private function depreciationBreakdownRows(array $yearlyRows): array
     {
-        $year = $scenario->depreciation->startYear;
-        $months = $this->activeMonths($year, $scenario->depreciation->startYear, $scenario->depreciation->startMonth, $scenario->property->saleYear, $scenario->property->saleMonth);
-        $buildingBasis = max($scenario->depreciation->buildingBasis, 0);
-        $linear = $buildingBasis * $scenario->depreciation->linearRate * $months / 12;
-        $degressive = $scenario->depreciation->degressiveActive ? $buildingBasis * $scenario->depreciation->degressiveRate * $months / 12 : 0.0;
-        $buildingDepreciation = $scenario->depreciation->degressiveActive && $scenario->depreciation->autoSwitchToLinear
-            ? max($degressive, $linear)
-            : ($scenario->depreciation->degressiveActive ? $degressive : $linear);
-        $special = $scenario->depreciation->special7bActive && $scenario->depreciation->special7bYears > 0
-            ? max($special7b['assessmentBasis'], 0) * $scenario->depreciation->special7bRate
-            : 0.0;
-        $furniture = $scenario->depreciation->furnitureBasis * $scenario->depreciation->furnitureRate * $months / 12;
-        $parking = $this->parkingDepreciationForYear($scenario->depreciation->parkingDepreciationItems, $year, $months, $scenario->property->saleYear, $scenario->property->saleMonth);
-        $total = min($buildingDepreciation + $special, $buildingBasis) + $furniture + $parking;
-
-        return [
-            [
-                'group' => 'AfA',
-                'label' => 'AfA degressiv '.$year,
-                'formula' => 'Gebäude-AfA-Basis × degressiver AfA-Satz × AfA-Monate / 12',
-                'values' => $buildingBasis.' × '.$this->percent($scenario->depreciation->degressiveRate).' × '.$months.' / 12',
-                'result' => $degressive,
-            ],
-            [
-                'group' => 'AfA',
-                'label' => 'AfA linear '.$year,
-                'formula' => 'Gebäude-AfA-Basis × linearer AfA-Satz × AfA-Monate / 12',
-                'values' => $buildingBasis.' × '.$this->percent($scenario->depreciation->linearRate).' × '.$months.' / 12',
-                'result' => $linear,
-            ],
-            [
-                'group' => 'AfA',
-                'label' => 'AfA §7b '.$year,
-                'formula' => '§7b-Bemessungsgrundlage × §7b-Satz, ohne zeitanteilige Kürzung',
-                'values' => $special7b['assessmentBasis'].' × '.$this->percent($scenario->depreciation->special7bRate),
-                'result' => $special,
-            ],
-            [
-                'group' => 'AfA',
-                'label' => 'AfA Möbel/Küche '.$year,
-                'formula' => 'Möbel/Küche-AfA-Basis × AfA-Satz × AfA-Monate / 12',
-                'values' => $scenario->depreciation->furnitureBasis.' × '.$this->percent($scenario->depreciation->furnitureRate).' × '.$months.' / 12',
-                'result' => $furniture,
-            ],
-            [
-                'group' => 'AfA',
-                'label' => 'AfA Stellplatz '.$year,
-                'formula' => 'Σ Stellplatz-AfA-Basis × jeweiliger AfA-Satz × AfA-Monate / 12',
-                'values' => $this->parkingDepreciationValues($scenario->depreciation->parkingDepreciationItems, $year, $months, $scenario->property->saleYear, $scenario->property->saleMonth),
-                'result' => $parking,
-            ],
-            [
-                'group' => 'AfA',
-                'label' => 'AfA gesamt '.$year,
-                'formula' => 'verwendete Gebäude-AfA + §7b + Möbel/Küche + Stellplatz',
-                'values' => $buildingDepreciation.' + '.$special.' + '.$furniture.' + '.$parking,
-                'result' => $total,
-            ],
-        ];
-    }
-
-    private function parkingDepreciationForYear(array $items, int $year, int $fallbackMonths, int $endYear, int $saleMonth): float
-    {
-        $total = 0.0;
-        foreach($items as $item) {
-            $months = $this->activeMonths(
-                $year,
-                (int)($item['startYear'] ?? 0) ?: $year,
-                (int)($item['startMonth'] ?? 0) ?: 1,
-                $endYear,
-                $saleMonth,
-            );
-            if(!isset($item['startYear'], $item['startMonth'])) {
-                $months = $fallbackMonths;
+        $rows = [];
+        foreach($yearlyRows as $row) {
+            $details = $row->depreciationDetails;
+            $year = $row->year;
+            $group = 'AfA';
+            $values = [
+                ['Restbuchwert Anfang', 'Basis abzüglich bisheriger tatsächlicher AfA', $details['bookValueStart'], ''],
+                ['Restnutzungsdauer', 'Gesamtnutzungsdauer abzüglich vergangener AfA-Monate / 12', $details['remainingLifeYears'], 'Jahre'],
+                ['AfA degressiv', 'Degressiver Vergleich, höchstens verfügbarer Restwert; nur bei angewandter Methode angesetzt', $row->depreciationDegressive, $details['degressiveCandidate'].' Vergleich; '.$details['months'].' Monate'],
+                ['AfA linear', 'Lineare Jahres-AfA × Monate / 12, höchstens verfügbarer Restwert', $row->depreciationLinear, $details['linearAnnualAmount'].' × '.$details['months'].' / 12; Methode '.$details['method']],
+                ['Linearer Wechselvergleich', 'Restbuchwert / Restnutzungsdauer × Monate / 12', $details['linearCandidate'], $details['remainingLifeYears'] > 0 ? $details['bookValueStart'].' / '.$details['remainingLifeYears'].' × '.$details['months'].' / 12' : 'Keine verbleibende Nutzungsdauer; verbleibender Restwert '.$details['bookValueStart']],
+                ['AfA §7b', 'Bemessungsgrundlage × gewählter Satz; Jahresabschreibung innerhalb des zulässigen Zeitraums', $row->depreciation7b, 'Bemessungsgrundlage '.$details['special7bBasis']],
+                ['AfA Möbel/Küche', 'min(zeitanteilige Jahres-AfA, verbleibende Möbel-Basis)', $row->depreciationFurniture, 'Restwert Ende '.$details['furnitureRemaining']],
+                ['AfA Stellplatz', 'Summe der je Stellplatz auf den Restwert begrenzten AfA', $row->depreciationParking, implode(' + ', array_map(static fn(array $item): string => $item['label'].': '.$item['basis'].' × '.($item['rate'] * 100).' % × '.$item['months'].' / 12; angesetzt '.$item['amount'], $details['parkingItems']))],
+                ['AfA gesamt', 'angesetzte Gebäude-AfA + §7b + Möbel/Küche + Stellplätze', $row->depreciationTotal, $row->depreciationDegressive.' + '.$row->depreciationLinear.' + '.$row->depreciation7b.' + '.$row->depreciationFurniture.' + '.$row->depreciationParking],
+                ['Restbuchwert Ende', 'Restbuchwert Anfang - normale Gebäude-AfA - Sonder-AfA', $details['bookValueEnd'], $details['bookValueStart'].' - '.$row->depreciationDegressive.' - '.$row->depreciationLinear.' - '.$row->depreciation7b],
+            ];
+            foreach($values as [$label, $formula, $result, $substitution]) {
+                $rows[] = [
+                    'group' => $group, 'year' => $year, 'label' => "$label $year",
+                    'formula' => $formula, 'values' => $substitution, 'result' => $result,
+                    'format' => $label === 'Restnutzungsdauer' ? 'years' : 'currency',
+                    'source' => OfficialSourceRegistry::get($label === 'AfA §7b' ? 'bmf_7b' : 'estg_7'),
+                ];
             }
-            $total += max((float)($item['basis'] ?? 0), 0) * max((float)($item['rate'] ?? 0), 0) * $months / 12;
         }
-        return $total;
-    }
-
-    private function parkingDepreciationValues(array $items, int $year, int $fallbackMonths, int $endYear, int $saleMonth): string
-    {
-        if($items === []) {
-            return 'keine Stellplatz-AfA-Basis';
-        }
-
-        return implode(' + ', array_map(function(array $item) use ($year, $fallbackMonths, $endYear, $saleMonth): string {
-            $months = isset($item['startYear'], $item['startMonth'])
-                ? $this->activeMonths($year, (int)$item['startYear'], (int)$item['startMonth'], $endYear, $saleMonth)
-                : $fallbackMonths;
-            return ($item['label'] ?? 'Stellplatz').': '.((float)($item['basis'] ?? 0)).' × '.$this->percent((float)($item['rate'] ?? 0)).' × '.$months.' / 12';
-        }, $items));
+        return $rows;
     }
 
     private function percent(float $rate): string
