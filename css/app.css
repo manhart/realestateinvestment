@@ -358,8 +358,21 @@ body {
 
 .rei-field-label {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.rei-field-label .rei-info-button,
+.rei-field-label .rei-auto-badge,
+.rei-field-label .rei-reset-auto {
+    flex-shrink: 0;
+}
+
+.rei-field-label .rei-reset-auto {
+    white-space: nowrap;
 }
 
 .rei-info-button {
